@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Types + tests du moteur : determinisme, regles, coherence des donnees.
+      - run: npm test
+
+      - run: npm run build
+
+      # L'equilibrage fait partie de la CI : une carte modifiee sans y penser
+      # peut sortir un poste de la fourchette visee sans casser un seul test.
+      - name: Equilibrage
+        run: npm run sim 600

@@ -12,13 +12,24 @@ export interface HitResult {
   position: THREE.Vector3;
 }
 
-const REACH = 1.3;
+/** Rayon de contact autour du tamis. */
+const CONTACT_RADIUS = 0.7;
+/** Distance a laquelle le bras part chercher la balle pendant un swing. */
+const ENGAGE_RADIUS = 2.3;
+/** Raideur du bras pendant la frappe : sans ce coup de fouet, le geste est invisible. */
+const SWING_GAIN = 6;
+/** Distance a laquelle la raquette commence a accompagner la balle. */
+const TRACK_RADIUS = 3.2;
+const TRACK_GAIN = 2.6;
+const SWING_DURATION = 0.42;
+/** Fenetre de contact, en fraction du swing. Large : rater doit rester rare. */
+const CONTACT_FROM = 0.12;
+const CONTACT_TO = 0.85;
+
 const _target = new THREE.Vector3();
 const _dir = new THREE.Vector3();
-const SWING_DURATION = 0.34;
-/** Fenetre de contact, en fraction du swing : frapper trop tot ou trop tard rate. */
-const CONTACT_FROM = 0.25;
-const CONTACT_TO = 0.62;
+const _head = new THREE.Vector3();
+const _lead = new THREE.Vector3();
 
 /** Un joueur : le ragdoll, sa raquette, et la logique de frappe. */
 export class Character {
@@ -67,6 +78,13 @@ export class Character {
     return this.ragdoll.position(out);
   }
 
+  /** Centre du tamis de la raquette, en coordonnees monde. */
+  racketHead(out = new THREE.Vector3()): THREE.Vector3 {
+    return out.copy(this.racket.position).add(
+      _dir.set(0, -0.2, 0).applyQuaternion(this.racket.quaternion),
+    );
+  }
+
   /** Declenche un swing vise vers le point `target` du camp adverse. */
   swing(kind: ShotKind, target: THREE.Vector3, charge = 1) {
     if (!this.canSwing) return;
@@ -85,7 +103,7 @@ export class Character {
     let hit: HitResult | null = null;
     if (this.swingT >= 0) {
       this.swingT += dt;
-      this.animateSwing(this.swingT / SWING_DURATION);
+      this.animateSwing(this.swingT / SWING_DURATION, ball);
       const t = this.swingT / SWING_DURATION;
       if (!this.hasContact && t >= CONTACT_FROM && t <= CONTACT_TO) {
         hit = this.tryContact(ball);
@@ -96,7 +114,7 @@ export class Character {
         this.ragdoll.resetPose();
       }
     } else if (!this.isDown) {
-      this.idlePose(performance.now() / 1000, sprinting);
+      this.idlePose(performance.now() / 1000, sprinting, ball);
     }
 
     this.syncRacket();
@@ -104,9 +122,8 @@ export class Character {
   }
 
   private tryContact(ball: Ball): HitResult | null {
-    const hand = this.ragdoll.handPosition();
     const bp = ball.position();
-    if (hand.distanceTo(bp) > REACH) return null;
+    if (this.racketHead(_head).distanceTo(bp) > CONTACT_RADIUS) return null;
 
     this.hasContact = true;
     const power = this.swingCharge;
@@ -129,30 +146,60 @@ export class Character {
     return { kind: this.swingKind, power, position: bp.clone() };
   }
 
-  /** Le swing est joue en deplacant la cible du bras : le ragdoll fait le reste. */
-  private animateSwing(t: number) {
+  /**
+   * Le swing est joue en deplacant la cible du bras : le ragdoll fait le reste.
+   * Si la balle est a portee, le bras la vise directement — c'est ce qui rend
+   * le contact raquette/balle lisible a l'ecran.
+   */
+  private animateSwing(t: number, ball: Ball) {
     const k = THREE.MathUtils.clamp(t, 0, 1);
     const arc = Math.sin(k * Math.PI);
+
+    const shoulder = this.ragdoll.parts.get('upperArmR')!.body.translation();
+    const bp = ball.position();
+    const dist = Math.hypot(bp.x - shoulder.x, bp.y - shoulder.y, bp.z - shoulder.z);
+
+    if (dist < ENGAGE_RADIUS) {
+      // On vise legerement devant la balle pour aller a sa rencontre.
+      _lead.copy(bp).addScaledVector(ball.velocity(_dir), 0.05);
+      this.ragdoll.aimLimbAt('upperArmR', _lead, SWING_GAIN);
+      this.ragdoll.aimLimbAt('foreArmR', _lead, SWING_GAIN);
+      this.ragdoll.setTarget('torso', new THREE.Euler(0, -0.4 + arc * 0.8, 0), 2.5);
+      return;
+    }
+
     if (this.swingKind === 'smash') {
-      this.ragdoll.setTarget('upperArmR', new THREE.Euler(-2.6 + arc * 3.4, 0, -0.5));
-      this.ragdoll.setTarget('foreArmR', new THREE.Euler(-2.2 + arc * 3.2, 0, 0));
-      this.ragdoll.setTarget('torso', new THREE.Euler(-0.35 + arc * 0.7, 0, 0));
+      this.ragdoll.setTarget('upperArmR', new THREE.Euler(-2.6 + arc * 3.4, 0, -0.5), SWING_GAIN);
+      this.ragdoll.setTarget('foreArmR', new THREE.Euler(-2.2 + arc * 3.2, 0, 0), SWING_GAIN);
+      this.ragdoll.setTarget('torso', new THREE.Euler(-0.35 + arc * 0.7, 0, 0), 2.5);
     } else if (this.swingKind === 'lob') {
-      this.ragdoll.setTarget('upperArmR', new THREE.Euler(0.9 - arc * 1.9, 0, -0.9));
-      this.ragdoll.setTarget('foreArmR', new THREE.Euler(0.5 - arc * 1.2, 0, 0));
+      this.ragdoll.setTarget('upperArmR', new THREE.Euler(0.9 - arc * 1.9, 0, -0.9), SWING_GAIN);
+      this.ragdoll.setTarget('foreArmR', new THREE.Euler(0.5 - arc * 1.2, 0, 0), SWING_GAIN);
     } else {
-      this.ragdoll.setTarget('upperArmR', new THREE.Euler(0.2, -1.5 + arc * 3.0, -1.2 + arc * 0.6));
-      this.ragdoll.setTarget('foreArmR', new THREE.Euler(0, -0.8 + arc * 1.6, 0));
-      this.ragdoll.setTarget('torso', new THREE.Euler(0, -0.6 + arc * 1.2, 0));
+      this.ragdoll.setTarget('upperArmR', new THREE.Euler(0.2, -1.5 + arc * 3.0, -1.2 + arc * 0.6), SWING_GAIN);
+      this.ragdoll.setTarget('foreArmR', new THREE.Euler(0, -0.8 + arc * 1.6, 0), SWING_GAIN);
+      this.ragdoll.setTarget('torso', new THREE.Euler(0, -0.6 + arc * 1.2, 0), 2.5);
     }
   }
 
-  private idlePose(time: number, moving: boolean) {
+  private idlePose(time: number, moving: boolean, ball: Ball) {
     const amp = moving ? 0.75 : 0.16;
     const s = Math.sin(time * (moving ? 9 : 2.2)) * amp;
     this.ragdoll.setTarget('thighL', new THREE.Euler(s, 0, 0));
     this.ragdoll.setTarget('thighR', new THREE.Euler(-s, 0, 0));
     this.ragdoll.setTarget('upperArmL', new THREE.Euler(-s * 0.6, 0, 0.35));
+
+    // Le bras arme accompagne la balle des qu'elle approche : le joueur a
+    // l'air de la suivre du regard, et surtout la raquette est deja en place
+    // quand la frappe part.
+    const shoulder = this.ragdoll.parts.get('upperArmR')!.body.translation();
+    const bp = ball.position();
+    const dist = Math.hypot(bp.x - shoulder.x, bp.y - shoulder.y, bp.z - shoulder.z);
+    if (dist < TRACK_RADIUS) {
+      this.ragdoll.aimLimbAt('upperArmR', bp, TRACK_GAIN);
+      this.ragdoll.aimLimbAt('foreArmR', bp, TRACK_GAIN);
+      return;
+    }
     this.ragdoll.setTarget('upperArmR', new THREE.Euler(s * 0.4, 0, -0.7));
     this.ragdoll.setTarget('foreArmR', new THREE.Euler(-0.5, 0, 0));
   }

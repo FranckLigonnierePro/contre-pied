@@ -76,6 +76,20 @@ npm run smoke    # joue des échanges au clavier, échoue sur toute erreur conso
 Il attend un Chromium ; sur un environnement sans navigateur installé par
 Playwright, préciser `CHROMIUM_PATH=/chemin/vers/chrome`.
 
+## Réglages de jouabilité
+
+Issus d'une session de jeu réelle :
+
+- **Le geste de frappe doit être visible.** Les bras d'un ragdoll sont volontairement
+  mous ; sans coup de fouet ponctuel sur leur raideur (`SWING_GAIN`) le bras
+  n'atteignait jamais sa pose et le joueur brassait l'air.
+- **La raquette accompagne la balle** dès qu'elle approche (`TRACK_RADIUS`), et le
+  contact est mesuré au tamis, plus à la main : on voit la balle être frappée.
+- **Un repère au sol** montre le point de rebond de la balle qui arrive, sans quoi
+  jouer le rebond revient à courir à l'aveugle.
+- **La gravité a été réduite** (1,35 g au lieu de 1,7) : au-delà, la balle retombait
+  si vite après son rebond qu'elle en devenait injouable.
+
 ## Limites du MVP
 
 Match en 1v1 uniquement, pas de mode 2v2 ni de coéquipier. Le service est

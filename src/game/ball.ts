@@ -27,13 +27,13 @@ export class Ball {
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(0, 1.2, 6)
-        .setLinearDamping(0.16)
+        .setLinearDamping(0.2)
         .setAngularDamping(0.2)
         .setCcdEnabled(true),
     );
     world.createCollider(
       RAPIER.ColliderDesc.ball(BALL_RADIUS)
-        .setRestitution(0.76)
+        .setRestitution(0.72)
         .setFriction(0.5)
         .setDensity(2.2)
         .setCollisionGroups(GROUPS.ball),
@@ -122,12 +122,15 @@ export class Ball {
     return events;
   }
 
+  /**
+   * La balle n'est sortie que si elle a quitte l'emprise du court. Tester la
+   * hauteur seule etait un bug : tout lob passant au-dessus des parois etait
+   * annonce faute alors qu'il retombait dans le terrain.
+   */
   private isOut(p: THREE.Vector3): boolean {
-    return (
-      Math.abs(p.x) > COURT.halfWidth + 0.4 ||
-      Math.abs(p.z) > COURT.halfLength + 0.4 ||
-      p.y > COURT.backWallHeight + 0.6
-    );
+    const beyond =
+      Math.abs(p.x) > COURT.halfWidth + 0.3 || Math.abs(p.z) > COURT.halfLength + 0.3;
+    return beyond || p.y > 14;
   }
 
   sync() {

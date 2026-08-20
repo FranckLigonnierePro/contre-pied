@@ -9,6 +9,7 @@ import { Ball } from './ball';
 import { Character, ballisticVelocity } from './character';
 import { Rules } from './rules';
 import { Ai } from './ai';
+import { ImpactFlash, LandingMarker } from './effects';
 
 const _v = new THREE.Vector3();
 const _camTarget = new THREE.Vector3();
@@ -22,6 +23,8 @@ export class Game {
   opponent!: Character;
   rules = new Rules();
   private ai = new Ai();
+  private marker!: LandingMarker;
+  private flash!: ImpactFlash;
   private input: Input;
   private hud: Hud;
   private sfx = new Sfx();
@@ -43,6 +46,8 @@ export class Game {
     buildCourt(this.stage.scene, this.world);
 
     this.ball = new Ball(this.world, this.stage.scene);
+    this.marker = new LandingMarker(this.stage.scene);
+    this.flash = new ImpactFlash(this.stage.scene);
     this.player = new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.joueur);
     this.opponent = new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia);
 
@@ -98,6 +103,12 @@ export class Game {
     }
 
     this.ball.sync();
+    this.flash.update(raw);
+    if (this.rules.phase === 'rally') {
+      this.marker.update(raw, this.ball.position(), this.ball.velocity(), PLAYER_SIDE);
+    } else {
+      this.marker.hide();
+    }
     this.player.sync();
     this.opponent.sync();
     this.updateCamera(raw);
@@ -196,7 +207,7 @@ export class Game {
     }
 
     const hit = this.player.update(dt, input.move, facing, this.ball);
-    if (hit) this.registerHit(PLAYER_SIDE, hit.power);
+    if (hit) this.registerHit(PLAYER_SIDE, hit.power, hit.position);
   }
 
   private updateOpponent(dt: number) {
@@ -205,12 +216,13 @@ export class Game {
       this.opponent.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
     }
     const hit = this.opponent.update(dt, decision.move, decision.facing, this.ball);
-    if (hit) this.registerHit(AI_SIDE, hit.power);
+    if (hit) this.registerHit(AI_SIDE, hit.power, hit.position);
   }
 
-  private registerHit(side: number, power: number) {
+  private registerHit(side: number, power: number, at: THREE.Vector3) {
     if (!this.rules.onHit(side)) return;
     this.sfx.hit(power);
+    this.flash.burst(at, power);
     this.rallyTimer = 0;
   }
 

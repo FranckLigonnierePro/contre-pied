@@ -65,6 +65,17 @@ Trois points ont demandé une attention particulière :
 - **Les frappes sont résolues balistiquement** (`ballisticVelocity`) vers un
   point du camp adverse, sinon la quasi-totalité des échanges finissent au filet.
 
+## Tests
+
+```bash
+npm run typecheck   # types
+npm test            # arbitrage : comptage, égalité/avantage, fautes, fin de match
+```
+
+L'arbitrage (`src/game/rules.ts`) est de la logique pure, sans dépendance à
+Three ni à Rapier : c'est la seule partie du jeu vérifiable sans navigateur, et
+celle où une régression passe le plus facilement inaperçue.
+
 ## Test de fumée
 
 ```bash

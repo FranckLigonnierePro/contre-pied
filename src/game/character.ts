@@ -42,6 +42,8 @@ export class Character {
   private swingCharge = 1;
   private hasContact = false;
   private cooldown = 0;
+  /** Horloge de simulation, avancee par le pas fixe et non par l'horloge murale. */
+  private time = 0;
 
   constructor(
     world: World,
@@ -95,7 +97,19 @@ export class Character {
     this.hasContact = false;
   }
 
-  update(dt: number, move: THREE.Vector3, facing: number, ball: Ball): HitResult | null {
+  /**
+   * @param canHit droit de toucher la balle, tranche par l'arbitre. Un swing
+   *   interdit se joue quand meme — on voit le joueur frapper dans le vide —
+   *   mais ne doit surtout pas deplacer la balle.
+   */
+  update(
+    dt: number,
+    move: THREE.Vector3,
+    facing: number,
+    ball: Ball,
+    canHit: boolean,
+  ): HitResult | null {
+    this.time += dt;
     this.cooldown = Math.max(0, this.cooldown - dt);
     const sprinting = move.lengthSq() > 0.01;
     this.ragdoll.update(dt, move, sprinting ? 5.4 : 0, facing);
@@ -105,7 +119,7 @@ export class Character {
       this.swingT += dt;
       this.animateSwing(this.swingT / SWING_DURATION, ball);
       const t = this.swingT / SWING_DURATION;
-      if (!this.hasContact && t >= CONTACT_FROM && t <= CONTACT_TO) {
+      if (canHit && !this.hasContact && t >= CONTACT_FROM && t <= CONTACT_TO) {
         hit = this.tryContact(ball);
       }
       if (this.swingT >= SWING_DURATION) {
@@ -114,7 +128,7 @@ export class Character {
         this.ragdoll.resetPose();
       }
     } else if (!this.isDown) {
-      this.idlePose(performance.now() / 1000, sprinting, ball);
+      this.idlePose(this.time, sprinting, ball);
     }
 
     this.syncRacket();

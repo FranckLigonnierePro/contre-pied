@@ -2,9 +2,10 @@
   "name": "padel-ragdoll",
   "version": "0.1.0",
   "description": "MVP d'un jeu de padel 3D avec des personnages entierement ragdoll",
-  "main": "index.js",
   "scripts": {
     "dev": "vite --host",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host --port 4173",
     "smoke": "node scripts/smoke.mjs"
@@ -28,7 +29,8 @@
     "@types/three": "^0.185.4",
     "playwright": "^1.62.1",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "private": true,
   "type": "module"

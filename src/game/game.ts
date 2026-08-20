@@ -206,7 +206,11 @@ export class Game {
       this.player.swing(kind, target, input.charge || 1);
     }
 
-    const hit = this.player.update(dt, input.move, facing, this.ball);
+    // L'arbitre tranche avant le contact : une frappe interdite (deux fois de
+    // suite, ou hors echange) ne doit pas deplacer la balle.
+    const hit = this.player.update(
+      dt, input.move, facing, this.ball, this.rules.canHit(PLAYER_SIDE),
+    );
     if (hit) this.registerHit(PLAYER_SIDE, hit.power, hit.position);
   }
 
@@ -215,7 +219,9 @@ export class Game {
     if (decision.swing && this.rules.phase === 'rally') {
       this.opponent.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
     }
-    const hit = this.opponent.update(dt, decision.move, decision.facing, this.ball);
+    const hit = this.opponent.update(
+      dt, decision.move, decision.facing, this.ball, this.rules.canHit(AI_SIDE),
+    );
     if (hit) this.registerHit(AI_SIDE, hit.power, hit.position);
   }
 

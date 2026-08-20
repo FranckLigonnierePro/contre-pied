@@ -7,7 +7,9 @@ on:
 
 jobs:
   verifier:
+    name: Types, arbitrage et build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,12 +19,46 @@ jobs:
 
       - run: npm ci
 
-      # Types + tests du moteur : determinisme, regles, coherence des donnees.
-      - run: npm test
+      - name: Types
+        run: npm run typecheck
+
+      # L'arbitrage est de la logique pure : c'est la seule partie du jeu qu'on
+      # peut verifier sans navigateur ni physique, et celle ou une regression
+      # passe le plus facilement inapercue.
+      - name: Tests de l'arbitrage
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  fumee:
+    name: Test de fumee
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
 
       - run: npm run build
 
-      # L'equilibrage fait partie de la CI : une carte modifiee sans y penser
-      # peut sortir un poste de la fourchette visee sans casser un seul test.
-      - name: Equilibrage
-        run: npm run sim 600
+      # Le jeu tourne pour de vrai : on sert le build, on joue des echanges au
+      # clavier et on echoue sur la moindre erreur console. C'est ce qui attrape
+      # les explosions de la simulation, qu'aucun test unitaire ne verra.
+      - name: Servir le build et jouer des echanges
+        run: |
+          npm run preview &
+          preview=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4173 > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run smoke
+          kill $preview

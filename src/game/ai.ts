@@ -22,10 +22,13 @@ export interface AiDecision {
  * decalage, ce qui produit des courses ratees et des ragdolls qui s'etalent.
  */
 export class Ai {
+  /** Horloge de simulation : le balayage doit suivre le pas fixe, pas l'horloge murale. */
+  private time = 0;
+
   constructor(private difficulty = 0.5) {}
 
   decide(self: Character, ball: Ball, dt: number): AiDecision {
-    void dt;
+    this.time += dt;
     const pos = self.position();
     ball.position(_ballPos);
     ball.velocity(_ballVel);
@@ -37,7 +40,7 @@ export class Ai {
     if (!incoming) _target.set(_ballPos.x * 0.3, 0, self.side * 6.5);
 
     const jitter = (1 - this.difficulty) * 2.2;
-    _target.x += Math.sin(performance.now() / 500) * jitter;
+    _target.x += Math.sin(this.time * 2) * jitter;
     _target.x = THREE.MathUtils.clamp(_target.x, -COURT.halfWidth + 0.5, COURT.halfWidth - 0.5);
     _target.z = THREE.MathUtils.clamp(
       _target.z,

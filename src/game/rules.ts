@@ -37,11 +37,18 @@ export class Rules {
     this.bounces = 0;
   }
 
+  /**
+   * Ce camp a-t-il le droit de toucher la balle ? On ne peut pas frapper deux
+   * fois de suite, ni frapper hors echange. Predicat sans effet de bord :
+   * il est interroge avant le contact, pour qu'une frappe interdite n'ait
+   * aucune consequence physique.
+   */
+  canHit(side: number): boolean {
+    return this.phase === 'rally' && this.lastHitter !== side;
+  }
+
   onHit(side: number): boolean {
-    // On ne peut pas frapper deux fois de suite, ni frapper la balle de l'adversaire
-    // avant qu'elle n'ait franchi le filet.
-    if (this.phase !== 'rally') return false;
-    if (this.lastHitter === side) return false;
+    if (!this.canHit(side)) return false;
     this.lastHitter = side;
     this.bounces = 0;
     return true;

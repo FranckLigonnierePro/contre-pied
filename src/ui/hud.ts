@@ -70,7 +70,7 @@ export class Hud {
       </div>
       <div class="banner"><h1></h1><p></p></div>
       <div class="charge"><i></i></div>
-      <div class="hint">ZQSD / WASD deplacer &nbsp;·&nbsp; ESPACE frapper (maintenir = puissance) &nbsp;·&nbsp; MAJ lob &nbsp;·&nbsp; E smash</div>
+      <div class="hint">ZQSD / WASD deplacer et viser &nbsp;·&nbsp; ESPACE frapper (maintenir = puissance) &nbsp;·&nbsp; MAJ lob &nbsp;·&nbsp; E smash</div>
     `;
     root.appendChild(layer);
 

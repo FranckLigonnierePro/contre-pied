@@ -1,7 +1,17 @@
 import { Game } from './game/game';
 
 const container = document.getElementById('app')!;
-new Game(container).start().catch((err) => {
-  console.error(err);
-  container.innerHTML = `<pre style="color:#fff;padding:24px;font:14px monospace">Erreur au demarrage :\n${err}</pre>`;
-});
+const chargement = document.getElementById('chargement');
+
+new Game(container)
+  .start()
+  .then(() => {
+    // Le premier rendu a eu lieu : on peut decouvrir le court.
+    chargement?.classList.add('parti');
+    chargement?.addEventListener('transitionend', () => chargement.remove(), { once: true });
+  })
+  .catch((err) => {
+    console.error(err);
+    // Meme presentation que pour une panne de chargement (voir index.html).
+    (window as unknown as { __padelPanne?: (raison: unknown) => void }).__padelPanne?.(err);
+  });

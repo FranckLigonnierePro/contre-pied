@@ -24,10 +24,16 @@ npm run build && npm run preview
 | Action | Clavier | Tactile |
 |---|---|---|
 | Se déplacer | `ZQSD` / `WASD` / flèches | joystick (moitié gauche) |
+| Viser | direction tenue au moment de frapper | direction du joystick |
 | Frapper | `Espace` (maintenir = puissance) | appui (moitié droite) |
 | Lob | `Maj` | appui long |
 | Smash | `E` (balle haute) | — |
 | Servir / rejouer | `Espace` | appui |
+
+La visée se lit dans le repère de l'écran : le fond du camp adverse est vers le
+haut, donc tenir vers l'avant allonge la balle et tenir vers l'arrière la
+raccourcit. Sans direction tenue, la balle part au centre. Comme la frappe
+ne part qu'au relâchement, on peut charger, viser, puis lâcher.
 
 ## Règles implémentées
 

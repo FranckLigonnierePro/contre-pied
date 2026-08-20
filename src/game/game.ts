@@ -9,6 +9,7 @@ import { Ball } from './ball';
 import { Character, ballisticVelocity } from './character';
 import { Rules } from './rules';
 import { Ai } from './ai';
+import { aimPoint } from './aim';
 import { ImpactFlash, LandingMarker } from './effects';
 
 const _v = new THREE.Vector3();
@@ -55,6 +56,9 @@ export class Game {
     (window as unknown as Record<string, unknown>).__padel = this;
     this.newPoint();
     this.last = performance.now();
+    // Une premiere image est rendue avant de rendre la main : l'ecran de
+    // chargement ne s'efface ainsi jamais sur un canvas encore vide.
+    this.stage.renderer.render(this.stage.scene, this.stage.camera);
     requestAnimationFrame(this.loop);
   }
 
@@ -117,7 +121,7 @@ export class Game {
 
   private fixedUpdate(dt: number) {
     const input = this.input.poll();
-    this.hud.setCharge(this.chargeRatio());
+    this.hud.setCharge(input.chargeRatio);
 
     if (this.rules.phase === 'match') {
       if (input.swing) {
@@ -184,10 +188,6 @@ export class Game {
     );
   }
 
-  private chargeRatio(): number {
-    return 0;
-  }
-
   private updatePlayer(dt: number, input: ReturnType<Input['poll']>) {
     const pos = this.player.position();
     const ballPos = this.ball.position();
@@ -197,13 +197,9 @@ export class Game {
     if (input.swing && this.rules.phase === 'rally') {
       this.input.consumeSwing();
       const kind = input.smash && ballPos.y > 1.9 ? 'smash' : input.lob ? 'lob' : 'plat';
-      // On vise le fond du camp adverse, decale par la position laterale du joueur.
-      const target = _v.set(
-        THREE.MathUtils.clamp(-pos.x * 0.8, -COURT.halfWidth + 1, COURT.halfWidth - 1),
-        0,
-        kind === 'lob' ? -8.5 : kind === 'smash' ? -4 : -6.5,
-      );
-      this.player.swing(kind, target, input.charge || 1);
+      // La direction tenue au moment de frapper decide ou part la balle.
+      const target = aimPoint(kind, input.move, PLAYER_SIDE, _v);
+      this.player.swing(kind, target, input.charge);
     }
 
     // L'arbitre tranche avant le contact : une frappe interdite (deux fois de

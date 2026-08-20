@@ -22,7 +22,7 @@
   },
   "homepage": "https://github.com/FranckLigonnierePro/contre-pied#readme",
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.20.0",
+    "@dimforge/rapier3d": "^0.20.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
@@ -30,6 +30,7 @@
     "playwright": "^1.62.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
+    "vite-plugin-wasm": "^3.6.0",
     "vitest": "^4.1.11"
   },
   "private": true,

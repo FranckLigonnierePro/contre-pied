@@ -5,9 +5,75 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <title>Padel Ragdoll</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎾</text></svg>" />
+    <!--
+      Ce style est en ligne a dessein : le reste de l'habillage est injecte par
+      le HUD a l'execution, donc sans lui la page reste blanche jusqu'a ce que
+      le bundle et le WebAssembly soient charges.
+    -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #0d1b12; }
+      #chargement {
+        position: fixed; inset: 0; z-index: 10;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 22px; background: #0d1b12; color: #f2f7f4;
+        font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+        transition: opacity .35s ease;
+      }
+      #chargement[hidden] { display: none; }
+      #chargement.parti { opacity: 0; pointer-events: none; }
+      .rebond { display: flex; flex-direction: column; align-items: center; height: 74px; justify-content: flex-end; }
+      .rebond .balle {
+        width: 34px; height: 34px; border-radius: 50%;
+        background: radial-gradient(circle at 34% 30%, #f2ff9b, #dcff4f 60%, #a8c62f);
+        box-shadow: 0 0 24px rgba(220, 255, 79, .4);
+        animation: saut .68s cubic-bezier(.32, 0, .66, 1) infinite alternate;
+      }
+      .rebond .ombre {
+        width: 30px; height: 6px; margin-top: 6px; border-radius: 50%;
+        background: rgba(0, 0, 0, .5);
+        animation: ombre .68s cubic-bezier(.32, 0, .66, 1) infinite alternate;
+      }
+      #chargement p {
+        margin: 0; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; opacity: .7;
+      }
+      #chargement .erreur {
+        max-width: 34rem; padding: 0 24px; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0; text-transform: none; opacity: .9; white-space: pre-wrap; color: #ff9c8a;
+      }
+      @keyframes saut { from { transform: translateY(-34px); } to { transform: translateY(0) scaleY(.92); } }
+      @keyframes ombre { from { transform: scale(.6); opacity: .25; } to { transform: scale(1); opacity: .5; } }
+      @media (prefers-reduced-motion: reduce) {
+        .rebond .balle, .rebond .ombre { animation: none; }
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="chargement">
+      <div class="rebond"><div class="balle"></div><div class="ombre"></div></div>
+      <p>Chargement du court…</p>
+    </div>
+    <!--
+      Le WebAssembly est desormais importe comme module : s'il ne se charge pas,
+      l'echec survient a l'evaluation du graphe, avant tout code applicatif. Sans
+      ce filet, l'ecran de chargement tournerait indefiniment.
+    -->
+    <script>
+      window.__padelPanne = function (raison) {
+        var el = document.getElementById('chargement');
+        if (!el || el.dataset.panne) return;
+        el.dataset.panne = '1';
+        el.innerHTML = '<p>Le jeu n\'a pas pu demarrer</p><p class="erreur"></p>';
+        el.querySelector('.erreur').textContent = String(raison);
+      };
+      addEventListener('error', function (e) {
+        var cible = e.target && (e.target.src || e.target.href);
+        window.__padelPanne(cible ? 'Ressource inaccessible : ' + cible : e.message);
+      }, true);
+      addEventListener('unhandledrejection', function (e) {
+        window.__padelPanne(e.reason);
+      });
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

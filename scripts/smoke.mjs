@@ -16,6 +16,11 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 
 await page.goto(URL, { waitUntil: 'networkidle' });
+await page.evaluate(() => {
+  window.__hits = 0; window.__reasons = [];
+  setInterval(() => { const o = window.__padel?.rules?.lastOutcome; if (o && window.__lastO !== o) { window.__lastO = o; window.__reasons.push((o.winner===1?'JOUEUR':'IA')+': '+o.reason); } }, 50);
+  setInterval(() => { const h = window.__padel?.rules?.lastHitter; if (h === 1 && window.__prev !== 1) window.__hits++; window.__prev = h; }, 30);
+});
 await page.waitForTimeout(1500);
 
 const held = new Set();
@@ -29,12 +34,13 @@ for (let i = 0; i < 300; i++) {
   const s = await page.evaluate(() => {
     const g = window.__padel;
     const p = g.player.position(), b = g.ball.position(), v = g.ball.velocity();
-    const g0 = 9.81 * 1.7;
+    const g0 = 9.81 * 1.35;
     const disc = v.y * v.y + 2 * g0 * (b.y - 0.9);
     const t = disc > 0 ? (v.y + Math.sqrt(disc)) / g0 : 0.2;
     return {
       landX: b.x + v.x * t, landZ: b.z + v.z * t, px: p.x, pz: p.z, by: b.y, vz: v.z,
       reach: g.player.ragdoll.handPosition().distanceTo(b),
+      racket: g.player.racketHead().distanceTo(b),
       phase: g.rules.phase,
       games: [g.rules.games.get(1), g.rules.games.get(-1)],
     };
@@ -51,12 +57,15 @@ for (let i = 0; i < 300; i++) {
   await hold('KeyA', s.px - tx > 0.25);
   await hold('KeyS', tz - s.pz > 0.3);
   await hold('KeyW', s.pz - tz > 0.3);
-  if (s.reach < 1.2 && s.by < 2.6) { await page.keyboard.press('Space'); swings += 1; }
+  if (s.racket < 1.0 && s.by < 2.6) { await page.keyboard.press('Space'); swings += 1; }
   await page.waitForTimeout(45);
 }
 for (const key of held) await page.keyboard.up(key);
 
 const games = await page.evaluate(() => [window.__padel.rules.games.get(1), window.__padel.rules.games.get(-1)]);
+const hits = await page.evaluate(() => window.__hits);
+console.log('contacts reussis:', hits);
+console.log('points:', await page.evaluate(() => window.__reasons));
 await browser.close();
 
 const played = games[0] + games[1] > 0 || swings > 5;

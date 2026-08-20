@@ -38,6 +38,11 @@ export interface Part {
   mesh: THREE.Mesh;
   /** Orientation cible, exprimee dans le repere du bassin. */
   target: THREE.Quaternion;
+  /**
+   * Multiplicateur de raideur. A 1 le membre est mou et suit mollement sa
+   * cible ; on le monte le temps d'un geste pour que celui-ci soit visible.
+   */
+  gain: number;
 }
 
 const _q = new THREE.Quaternion();
@@ -47,6 +52,10 @@ const _v = new THREE.Vector3();
 const _qDelta = new THREE.Quaternion();
 const _axis = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const LIMB_AXIS = new THREE.Vector3(0, -1, 0);
+const _aimDir = new THREE.Vector3();
+const _aimQuat = new THREE.Quaternion();
+const _yawInv = new THREE.Quaternion();
 
 /** Vitesse angulaire max d'un membre pilote (rad/s). */
 const MAX_ANGVEL = 14;
@@ -108,7 +117,7 @@ export class Ragdoll {
       mesh.castShadow = true;
       this.group.add(mesh);
 
-      this.parts.set(spec.name, { spec, body, mesh, target: new THREE.Quaternion() });
+      this.parts.set(spec.name, { spec, body, mesh, target: new THREE.Quaternion(), gain: 1 });
     }
 
     this.addFace(shirtColor);
@@ -187,12 +196,36 @@ export class Ragdoll {
     return this.stun > 0;
   }
 
-  setTarget(part: string, euler: THREE.Euler) {
-    this.parts.get(part)?.target.setFromEuler(euler);
+  setTarget(part: string, euler: THREE.Euler, gain = 1) {
+    const p = this.parts.get(part);
+    if (!p) return;
+    p.target.setFromEuler(euler);
+    p.gain = gain;
+  }
+
+  /**
+   * Oriente un membre pour que son axe pointe vers `point`. C'est ce qui fait
+   * que la raquette va reellement chercher la balle au lieu de brasser l'air.
+   */
+  aimLimbAt(part: string, point: THREE.Vector3, gain = 1) {
+    const p = this.parts.get(part);
+    if (!p) return;
+    const t = p.body.translation();
+    _aimDir.set(point.x - t.x, point.y - t.y, point.z - t.z);
+    if (_aimDir.lengthSq() < 1e-6) return;
+    _aimDir.normalize();
+    // L'axe d'un membre est son -y local (la main est au bout du bras).
+    _aimQuat.setFromUnitVectors(LIMB_AXIS, _aimDir);
+    _yawInv.setFromAxisAngle(UP, -this.yaw);
+    p.target.copy(_yawInv).multiply(_aimQuat);
+    p.gain = gain;
   }
 
   resetPose() {
-    for (const part of this.parts.values()) part.target.identity();
+    for (const part of this.parts.values()) {
+      part.target.identity();
+      part.gain = 1;
+    }
   }
 
   /** Replace le personnage debout a son point de depart. */
@@ -291,10 +324,10 @@ function driveToPose(part: Part, desired: THREE.Quaternion, dt: number) {
   const angle = 2 * Math.acos(THREE.MathUtils.clamp(delta.w, -1, 1));
   _axis.set(delta.x / s, delta.y / s, delta.z / s);
 
-  const gain = part.spec.stiffness * 0.6;
+  const gain = part.spec.stiffness * 0.6 * part.gain;
   const wanted = _axis.multiplyScalar(THREE.MathUtils.clamp(angle * gain, -MAX_ANGVEL, MAX_ANGVEL));
   const w = part.body.angvel();
-  const blend = Math.min(1, part.spec.stiffness * 0.5 * dt);
+  const blend = Math.min(1, part.spec.stiffness * 0.5 * part.gain * dt);
   part.body.setAngvel(
     {
       x: w.x + (wanted.x - w.x) * blend,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { COURT } from '../core/constants';
+import { predictLanding as ballisticLanding } from './effects';
 import type { Ball } from './ball';
 import type { Character } from './character';
 import type { ShotKind } from './character';
@@ -21,7 +22,7 @@ export interface AiDecision {
  * decalage, ce qui produit des courses ratees et des ragdolls qui s'etalent.
  */
 export class Ai {
-  constructor(private difficulty = 0.58) {}
+  constructor(private difficulty = 0.5) {}
 
   decide(self: Character, ball: Ball, dt: number): AiDecision {
     void dt;
@@ -74,11 +75,8 @@ export function predictLanding(
   side: number,
   out: THREE.Vector3,
 ): THREE.Vector3 {
-  const g = 9.81 * 1.7;
-  const targetY = 0.9;
-  const disc = vel.y * vel.y + 2 * g * (pos.y - targetY);
-  const t = disc > 0 ? (vel.y + Math.sqrt(disc)) / g : 0.25;
-  out.set(pos.x + vel.x * t, 0, pos.z + vel.z * t);
+  out.copy(ballisticLanding(pos, vel, 0.9));
+  out.y = 0;
   // On garde l'IA de son cote du filet.
   if (out.z * side < 0.5) out.z = side * 1.5;
   return out;

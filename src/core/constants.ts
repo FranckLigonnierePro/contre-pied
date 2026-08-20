@@ -10,7 +10,11 @@ export const COURT = {
 };
 
 export const BALL_RADIUS = 0.033;
-export const GRAVITY = -9.81 * 1.7; // legerement exagere pour un rythme arcade
+/**
+ * Gravite exageree pour un rythme arcade, mais pas trop : au-dela la balle
+ * retombe si vite apres son rebond qu'elle devient injouable.
+ */
+export const GRAVITY = -9.81 * 1.35;
 
 /** Le joueur humain occupe les z positifs, l'IA les z negatifs. */
 export const PLAYER_SIDE = 1;

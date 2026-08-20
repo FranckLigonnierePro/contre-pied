@@ -1,31 +1,35 @@
 {
-  "name": "contre-pied",
+  "name": "padel-ragdoll",
   "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "Deckbuilder roguelike de carriere de footballeur — MVP Phase 0",
+  "description": "MVP d'un jeu de padel 3D avec des personnages entierement ragdoll",
+  "main": "index.js",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "sim": "tsx src/sim/balance.ts",
-    "verif:mobile": "node scripts/verif-mobile.mjs"
+    "preview": "vite preview --host --port 4173",
+    "smoke": "node scripts/smoke.mjs"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FranckLigonnierePro/contre-pied.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/FranckLigonnierePro/contre-pied/issues"
+  },
+  "homepage": "https://github.com/FranckLigonnierePro/contre-pied#readme",
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "@dimforge/rapier3d-compat": "^0.20.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@types/three": "^0.185.4",
     "playwright": "^1.62.1",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vite": "^5.4.11",
-    "vitest": "^2.1.8"
-  }
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "private": true,
+  "type": "module"
 }

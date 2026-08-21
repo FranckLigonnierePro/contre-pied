@@ -103,6 +103,36 @@ L'arbitrage (`src/game/rules.ts`) est de la logique pure, sans dépendance à
 Three ni à Rapier : c'est la seule partie du jeu vérifiable sans navigateur, et
 celle où une régression passe le plus facilement inaperçue.
 
+## Simulateur d'équilibrage
+
+```bash
+npm run build
+npm run preview &
+npm run sim 100 1                    # 100 points, graine 1
+npm run sim -- 20 1 --determinisme   # la même graine rejoue la même partie
+```
+
+Deux IA s'affrontent sans rendu ni horloge murale, et la partie se résume en
+chiffres : longueur des échanges, répartition des motifs de fin de point par
+camp, taux de fautes au service. 100 points tournent en une poignée de
+secondes, ce qui rend un réglage mesurable au lieu d'être deviné.
+
+Tout l'aléatoire du jeu passe par [`src/core/random.ts`](src/core/random.ts), donc
+une graine rejoue exactement la même partie — à condition de partir d'un monde
+neuf, ce que fait le paramètre d'URL `?sim=1` en gelant la boucle de rendu.
+
+Valeurs de référence actuelles (graines 1 à 3, 100 points chacune) :
+
+| Mesure | Observé |
+|---|---|
+| Échange moyen | 5,9 à 6,6 frappes |
+| Points gagnés côté joueur | 62 à 65 % |
+| Fautes de service | 26 à 29 % des points |
+
+Les 63 % côté joueur ne sont pas du bruit : les deux camps ne placent pas leurs
+balles de la même façon. Le côté joueur vise par la direction tenue
+([`aim.ts`](src/game/aim.ts)), l'IA tire son point de chute au hasard.
+
 ## Test de fumée
 
 ```bash
@@ -111,8 +141,9 @@ npm run preview &
 npm run smoke    # joue des échanges au clavier, échoue sur toute erreur console
 ```
 
-Il attend un Chromium ; sur un environnement sans navigateur installé par
-Playwright, préciser `CHROMIUM_PATH=/chemin/vers/chrome`.
+Le test de fumée et le simulateur attendent tous deux un Chromium ; sur un
+environnement sans navigateur installé par Playwright, préciser
+`CHROMIUM_PATH=/chemin/vers/chrome`.
 
 ## Réglages de jouabilité
 

@@ -65,7 +65,12 @@ export class Rules {
    * aucune consequence physique.
    */
   canHit(side: number): boolean {
-    return this.phase === 'rally' && this.lastHitter !== side;
+    if (this.phase !== 'rally') return false;
+    if (this.lastHitter === side) return false;
+    // Le service doit rebondir dans le carre avant d'etre repris : tant qu'il
+    // n'a pas ete juge, le receveur ne peut pas le prendre de volee.
+    if (this.judgingServe) return false;
+    return true;
   }
 
   onHit(side: number): boolean {

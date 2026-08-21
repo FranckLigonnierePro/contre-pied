@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { COURT } from '../core/constants';
 import { predictIntercept } from './trajectory';
+import { randRange, randSpread, random } from '../core/random';
 import type { Ball } from './ball';
 import type { Character } from './character';
 import type { ShotKind } from './character';
@@ -57,14 +58,14 @@ export class Ai {
 
     let swing: AiDecision['swing'] = null;
     const hand = self.ragdoll.handPosition();
-    if (incoming && self.canSwing && hand.distanceTo(_ballPos) < 1.6 && Math.random() < this.difficulty) {
-      const kind: ShotKind = _ballPos.y > 2.2 ? 'smash' : Math.random() < 0.2 ? 'lob' : 'plat';
+    if (incoming && self.canSwing && hand.distanceTo(_ballPos) < 1.6 && random() < this.difficulty) {
+      const kind: ShotKind = _ballPos.y > 2.2 ? 'smash' : random() < 0.2 ? 'lob' : 'plat';
       const aim = new THREE.Vector3(
-        THREE.MathUtils.randFloatSpread(COURT.halfWidth * 1.4),
+        randSpread(COURT.halfWidth * 1.4),
         0,
         -self.side * (kind === 'lob' ? 8.5 : kind === 'smash' ? 4 : 6.5),
       );
-      swing = { kind, aim, charge: 0.8 + Math.random() * 0.4 };
+      swing = { kind, aim, charge: randRange(0.8, 1.2) };
     }
 
     return { move: _move.clone(), facing, swing };

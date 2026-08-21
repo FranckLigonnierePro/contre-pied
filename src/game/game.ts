@@ -11,6 +11,7 @@ import { ballisticVelocity } from './trajectory';
 import { Rules } from './rules';
 import { Ai } from './ai';
 import { aimPoint } from './aim';
+import { randSpread, seedRandom } from '../core/random';
 import { ImpactFlash, LandingMarker } from './effects';
 
 const _v = new THREE.Vector3();
@@ -31,9 +32,19 @@ export class Game {
   private hud: Hud;
   private sfx = new Sfx();
 
+  /**
+   * Pilote automatique du joueur. Renseigne, le camp du joueur est joue par
+   * une IA : c'est ce qui permet au simulateur de faire tourner des matchs
+   * complets sans personne au clavier.
+   */
+  autoPlayer: Ai | null = null;
+
+  private running = true;
   private accumulator = 0;
   private last = 0;
   private pointTimer = 0;
+  /** Delai avant l'engagement du pilote automatique. */
+  private serveTimer = 1.1;
   private rallyTimer = 0;
   private slowmo = 1;
 
@@ -61,6 +72,12 @@ export class Game {
     // chargement ne s'efface ainsi jamais sur un canvas encore vide.
     this.stage.renderer.render(this.stage.scene, this.stage.camera);
     requestAnimationFrame(this.loop);
+
+    // Mode simulation : la boucle ne doit avancer le monde d'aucune image avant
+    // que le simulateur prenne la main. Le nombre d'images ecoulees varierait
+    // d'une execution a l'autre, et l'etat du solveur avec — une meme graine
+    // ne rejouerait alors pas la meme partie.
+    if (new URLSearchParams(location.search).has('sim')) this.stop();
   }
 
   private newPoint() {
@@ -91,9 +108,9 @@ export class Game {
     const attaque = this.rules.serveAttempt === 1;
     const erreur = attaque ? 1.4 : 0.6;
     const target = new THREE.Vector3(
-      box * (attaque ? 3.6 : 2.2) + THREE.MathUtils.randFloatSpread(erreur),
+      box * (attaque ? 3.6 : 2.2) + randSpread(erreur),
       0,
-      -side * (attaque ? 6.3 : 4.4) + THREE.MathUtils.randFloatSpread(erreur),
+      -side * (attaque ? 6.3 : 4.4) + randSpread(erreur),
     );
     this.ball.reset(from);
     this.ball.launch(ballisticVelocity(from, target, 2.4));
@@ -113,7 +130,34 @@ export class Game {
     this.pointTimer = 1.4;
   }
 
+  /**
+   * Avance la simulation d'un pas fixe, sans rendu ni horloge murale. C'est le
+   * point d'entree du simulateur : il permet de jouer des milliers de points
+   * bien plus vite que le temps reel.
+   */
+  step(dt = FIXED_DT) {
+    this.fixedUpdate(dt);
+  }
+
+  /** Arrete la boucle de rendu. Le jeu reste avancable via `step()`. */
+  stop() {
+    this.running = false;
+  }
+
+  /**
+   * Bascule en mode simulation : les deux camps sont joues par l'IA, l'aleatoire
+   * est reproductible et le rendu est coupe. Point d'entree de `npm run sim`.
+   */
+  simulate(seed: number, difficulty = 0.5) {
+    seedRandom(seed);
+    this.autoPlayer = new Ai(difficulty);
+    this.stop();
+    this.rules.reset();
+    this.newPoint();
+  }
+
   private loop = (now: number) => {
+    if (!this.running) return;
     requestAnimationFrame(this.loop);
     const raw = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
@@ -139,8 +183,47 @@ export class Game {
     this.stage.renderer.render(this.stage.scene, this.stage.camera);
   };
 
+  /**
+   * Traduit une decision d'IA en etat d'entree. On ne court-circuite pas
+   * `updatePlayer` : le pilote automatique emprunte exactement le chemin du
+   * joueur humain, visee comprise, sinon le simulateur mesurerait autre chose
+   * que ce que l'on joue.
+   */
+  private autoInput(): ReturnType<Input['poll']> {
+    const s = this.input.state;
+    s.swing = false;
+    s.lob = false;
+    s.smash = false;
+    s.charge = 1;
+    s.chargeRatio = 0;
+
+    // Le simulateur enchaine les matchs : on relance sans attendre personne.
+    if (this.rules.phase === 'match') {
+      s.swing = true;
+      return s;
+    }
+
+    if (this.rules.phase === 'serve' && this.rules.server === PLAYER_SIDE) {
+      this.serveTimer -= FIXED_DT;
+      if (this.serveTimer <= 0) s.swing = true;
+      s.move.set(0, 0, 0);
+      return s;
+    }
+    this.serveTimer = 1.1;
+
+    const d = this.autoPlayer!.decide(this.player, this.ball, FIXED_DT);
+    s.move.copy(d.move);
+    if (d.swing) {
+      s.swing = true;
+      s.lob = d.swing.kind === 'lob';
+      s.smash = d.swing.kind === 'smash';
+      s.charge = d.swing.charge;
+    }
+    return s;
+  }
+
   private fixedUpdate(dt: number) {
-    const input = this.input.poll();
+    const input = this.autoPlayer ? this.autoInput() : this.input.poll();
     this.hud.setCharge(input.chargeRatio);
 
     if (this.rules.phase === 'match') {
@@ -240,7 +323,9 @@ export class Game {
 
   private updateOpponent(dt: number) {
     const decision = this.ai.decide(this.opponent, this.ball, dt);
-    if (decision.swing && this.rules.phase === 'rally') {
+    // On interroge l'arbitre avant de declencher : inutile de gaspiller un
+    // swing sur une balle que l'IA n'a pas le droit de toucher.
+    if (decision.swing && this.rules.canHit(AI_SIDE)) {
       this.opponent.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
     }
     const hit = this.opponent.update(

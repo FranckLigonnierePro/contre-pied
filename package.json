@@ -8,7 +8,8 @@
     "test": "vitest run",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host --port 4173",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "sim": "node scripts/sim.mjs"
   },
   "repository": {
     "type": "git",

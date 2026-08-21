@@ -3,6 +3,7 @@ import { Ragdoll } from './ragdoll';
 import { Ball } from './ball';
 import type { World } from '../core/physics';
 import { ballisticVelocity } from './trajectory';
+import { randSpread } from '../core/random';
 import { BALL_RADIUS, COURT, GROUPS, PALETTE, PLAYER_SIDE } from '../core/constants';
 
 export type ShotKind = 'plat' | 'lob' | 'smash';
@@ -157,7 +158,7 @@ export class Character {
     const velocity = ballisticVelocity(bp, target, peak);
 
     ball.reset(bp.clone().addScaledVector(_dir.copy(target).sub(bp).setY(0).normalize(), BALL_RADIUS * 2.5));
-    ball.launch(velocity, (Math.random() - 0.5) * 12);
+    ball.launch(velocity, randSpread(12));
     return { kind: this.swingKind, power, position: bp.clone() };
   }
 
@@ -237,6 +238,10 @@ export class Character {
     this.ragdoll.respawn(new THREE.Vector3(0, 0, this.side * 7.5), this.side > 0 ? Math.PI : 0);
     this.swingT = -1;
     this.cooldown = 0;
+    // L'horloge repart de zero a chaque point : sans cela, la pose d'attente
+    // depend du temps ecoule depuis le chargement, et deux parties lancees a
+    // la meme graine ne se rejouent pas a l'identique.
+    this.time = 0;
   }
 
   dispose() {

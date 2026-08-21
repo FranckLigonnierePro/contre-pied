@@ -161,6 +161,17 @@ describe('service', () => {
     expect(rules.serveAttempt).toBe(1);
   });
 
+  it('interdit au receveur de reprendre le service de volee', () => {
+    const rules = new Rules();
+    rules.startPoint();
+    rules.onServe(rules.server);
+    expect(rules.canHit(-rules.server)).toBe(false);
+    expect(rules.onHit(-rules.server)).toBe(false);
+    // Une fois le service rebondi dans le carre, la reprise est ouverte.
+    rules.onBallEvent(serviceValide(rules));
+    expect(rules.canHit(-rules.server)).toBe(true);
+  });
+
   it('compte le rebond du service comme le premier du receveur', () => {
     const rules = new Rules();
     rules.startPoint();

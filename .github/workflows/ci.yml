@@ -52,7 +52,7 @@ jobs:
       # Le jeu tourne pour de vrai : on sert le build, on joue des echanges au
       # clavier et on echoue sur la moindre erreur console. C'est ce qui attrape
       # les explosions de la simulation, qu'aucun test unitaire ne verra.
-      - name: Servir le build et jouer des echanges
+      - name: Servir le build, jouer des echanges et simuler des matchs
         run: |
           npm run preview &
           preview=$!
@@ -61,4 +61,11 @@ jobs:
             sleep 1
           done
           npm run smoke
+          # Une meme graine doit rejouer exactement la meme partie : c'est ce
+          # qui rend les chiffres ci-dessous comparables d'un commit a l'autre.
+          npm run sim -- 20 1 --determinisme
+          # Equilibrage : deux IA jouent 100 points et le resultat doit rester
+          # dans des fourchettes. Un reglage peut sortir le jeu de sa zone
+          # jouable sans casser le moindre test.
+          npm run sim 100 1
           kill $preview

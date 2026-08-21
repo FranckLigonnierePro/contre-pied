@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { GRAVITY, PALETTE } from '../core/constants';
+import { PALETTE } from '../core/constants';
+import { landingPoint } from './trajectory';
+
+const _out = new THREE.Vector3();
 
 /**
  * Cercle au sol indiquant ou la balle va rebondir. C'est le repere qui rend le
@@ -33,7 +36,7 @@ export class LandingMarker {
       this.mesh.visible = false;
       return;
     }
-    const point = predictLanding(ballPos, ballVel);
+    const point = landingPoint(ballPos, ballVel, _out);
     this.mesh.visible = true;
     this.mesh.position.set(point.x, 0.02, point.z);
     this.pulse += dt * 6;
@@ -46,15 +49,6 @@ export class LandingMarker {
   }
 }
 
-const _out = new THREE.Vector3();
-
-/** Point de chute au sol d'une balle en vol libre. */
-export function predictLanding(pos: THREE.Vector3, vel: THREE.Vector3, groundY = 0.05): THREE.Vector3 {
-  const g = Math.abs(GRAVITY);
-  const disc = vel.y * vel.y + 2 * g * (pos.y - groundY);
-  const t = disc > 0 ? (vel.y + Math.sqrt(disc)) / g : 0;
-  return _out.set(pos.x + vel.x * t, groundY, pos.z + vel.z * t);
-}
 
 /** Eclat blanc au point d'impact raquette/balle. */
 export class ImpactFlash {

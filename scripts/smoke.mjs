@@ -51,6 +51,13 @@ for (let i = 0; i < 300; i++) {
     await page.waitForTimeout(120);
     continue;
   }
+  // Pendant la celebration du point il n'y a rien a jouer. On attend par gros
+  // paliers pour ne pas gaspiller le budget d'iterations : le ralenti de fin de
+  // point dure plusieurs secondes et mangeait l'essentiel de la session.
+  if (s.phase === 'point') {
+    await page.waitForTimeout(250);
+    continue;
+  }
   const tx = s.vz > 0 ? s.landX : 0;
   const tz = s.vz > 0 ? Math.max(1.5, Math.min(9, s.landZ)) : 5.5;
   await hold('KeyD', tx - s.px > 0.25);
@@ -64,12 +71,19 @@ for (const key of held) await page.keyboard.up(key);
 
 const games = await page.evaluate(() => [window.__padel.rules.games.get(1), window.__padel.rules.games.get(-1)]);
 const hits = await page.evaluate(() => window.__hits);
+const reasons = await page.evaluate(() => window.__reasons);
 console.log('contacts reussis:', hits);
-console.log('points:', await page.evaluate(() => window.__reasons));
+console.log('points:', reasons);
 await browser.close();
 
-const played = games[0] + games[1] > 0 || swings > 5;
-console.log(`swings: ${swings} · jeux: ${games[0]}-${games[1]} · erreurs: ${errors.length}`);
+// On mesure les contacts reussis, pas les swings tentes : le nombre de swings
+// depend surtout du temps passe hors celebration, ce qui rendait le seuil
+// instable d'une session a l'autre.
+const played = hits >= 3 || games[0] + games[1] > 0;
+console.log(
+  `contacts: ${hits} · swings: ${swings} · points: ${reasons.length}` +
+  ` · jeux: ${games[0]}-${games[1]} · erreurs: ${errors.length}`,
+);
 if (errors.length) { console.error(errors.slice(0, 5)); process.exit(1); }
-if (!played) { console.error('Aucun echange joue.'); process.exit(1); }
+if (!played) { console.error('Aucun echange joue : la raquette n a jamais touche la balle.'); process.exit(1); }
 console.log('OK');

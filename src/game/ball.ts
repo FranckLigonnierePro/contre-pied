@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { RAPIER, type World } from '../core/physics';
-import { BALL_RADIUS, COURT, GROUPS, PALETTE } from '../core/constants';
+import { BALL_DAMPING, BALL_RADIUS, COURT, GROUPS, PALETTE } from '../core/constants';
 
 export type BounceKind = 'floor' | 'net' | 'wall' | 'out';
+
+const KINDS: BounceKind[] = ['floor', 'net', 'wall', 'out'];
 
 export interface BounceEvent {
   kind: BounceKind;
@@ -17,9 +19,18 @@ export class Ball {
   readonly mesh: THREE.Mesh;
   readonly trail: THREE.Points;
 
+  private prevVx = 0;
   private prevVz = 0;
   private prevVy = 0;
+  /** Silence global juste apres une frappe : la frappe elle-meme n'est pas un rebond. */
   private cooldown = 0;
+  /**
+   * Anti-rebond par type d'evenement. Un compteur unique ne suffit pas : au
+   * padel la balle touche la vitre une fraction de seconde apres le rebond au
+   * sol, et le silence du sol avalait la vitre — soit exactement la sequence
+   * que le jeu au mur doit reconnaitre.
+   */
+  private muets: Record<BounceKind, number> = { floor: 0, net: 0, wall: 0, out: 0 };
   private trailPositions: Float32Array;
   private trailIndex = 0;
 
@@ -27,7 +38,7 @@ export class Ball {
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(0, 1.2, 6)
-        .setLinearDamping(0.2)
+        .setLinearDamping(BALL_DAMPING)
         .setAngularDamping(0.2)
         .setCcdEnabled(true),
     );
@@ -74,6 +85,7 @@ export class Ball {
     this.body.setLinvel({ x: velocity.x, y: velocity.y, z: velocity.z }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.cooldown = 0.08;
+    for (const kind of KINDS) this.muets[kind] = 0;
     for (let i = 0; i < this.trailPositions.length; i += 3) {
       this.trailPositions[i] = position.x;
       this.trailPositions[i + 1] = position.y;
@@ -93,25 +105,35 @@ export class Ball {
     const p = this.position();
     const v = this.velocity();
     this.cooldown = Math.max(0, this.cooldown - dt);
+    for (const kind of KINDS) this.muets[kind] = Math.max(0, this.muets[kind] - dt);
+
+    const emettre = (kind: BounceKind, side: number, silence: number) => {
+      events.push({ kind, side, position: p.clone() });
+      this.muets[kind] = silence;
+    };
 
     if (this.cooldown === 0) {
       // Rebond au sol : la vitesse verticale change de signe pres du sol.
-      if (p.y < BALL_RADIUS + 0.06 && this.prevVy < -0.5 && v.y >= this.prevVy) {
-        events.push({ kind: 'floor', side: Math.sign(p.z) || 1, position: p.clone() });
-        this.cooldown = 0.12;
+      if (
+        this.muets.floor === 0 &&
+        p.y < BALL_RADIUS + 0.06 && this.prevVy < -0.5 && v.y >= this.prevVy
+      ) {
+        emettre('floor', Math.sign(p.z) || 1, 0.12);
       } else if (
+        this.muets.net === 0 &&
         Math.abs(p.z) < 0.12 &&
         p.y < COURT.netHeight &&
         Math.sign(v.z) !== Math.sign(this.prevVz)
       ) {
-        events.push({ kind: 'net', side: Math.sign(this.prevVz) * -1 || 1, position: p.clone() });
-        this.cooldown = 0.2;
-      } else if (this.isOut(p)) {
-        events.push({ kind: 'out', side: Math.sign(p.z) || 1, position: p.clone() });
-        this.cooldown = 0.5;
+        emettre('net', Math.sign(this.prevVz) * -1 || 1, 0.2);
+      } else if (this.muets.wall === 0 && this.hitsWall(p, v)) {
+        emettre('wall', Math.sign(p.z) || 1, 0.15);
+      } else if (this.muets.out === 0 && this.isOut(p)) {
+        emettre('out', Math.sign(p.z) || 1, 0.5);
       }
     }
 
+    this.prevVx = v.x;
     this.prevVz = v.z;
     this.prevVy = v.y;
 
@@ -120,6 +142,27 @@ export class Ball {
     (this.trail.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
 
     return events;
+  }
+
+  /**
+   * Rebond sur une vitre : la composante de vitesse perpendiculaire a la paroi
+   * s'inverse a son contact. Les parois laterales et le fond sont traites
+   * pareil, la regle du padel ne les distingue pas.
+   */
+  private hitsWall(p: THREE.Vector3, v: THREE.Vector3): boolean {
+    const marge = BALL_RADIUS + 0.1;
+    const lateral =
+      Math.abs(p.x) > COURT.halfWidth - marge &&
+      p.y < COURT.sideWallHeight &&
+      Math.abs(this.prevVx) > 0.5 &&
+      Math.sign(v.x) !== Math.sign(this.prevVx);
+    if (lateral) return true;
+    return (
+      Math.abs(p.z) > COURT.halfLength - marge &&
+      p.y < COURT.backWallHeight &&
+      Math.abs(this.prevVz) > 0.5 &&
+      Math.sign(v.z) !== Math.sign(this.prevVz)
+    );
   }
 
   /**

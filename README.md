@@ -38,8 +38,21 @@ ne part qu'au relâchement, on peut charger, viser, puis lâcher.
 ## Règles implémentées
 
 Comptage padel classique (0/15/30/40, égalité et avantage), premier à **3 jeux**.
-Un point se perd sur : double rebond, balle au filet, balle sortie, ou rebond
-dans son propre camp. Le perdant du point s'effondre au sol.
+Un point se perd sur : double rebond, balle au filet, balle sortie, rebond
+dans son propre camp, **vitre touchée avant le rebond au sol**, ou **double
+faute au service**. Le perdant du point s'effondre au sol.
+
+**Le service** se joue en diagonale : la balle doit retomber dans le carré
+opposé, en deçà de la ligne de service, et le carré change à chaque point. Une
+première balle manquée donne droit à une seconde, jouée plus prudemment ; deux
+fautes de suite et le point va au receveur.
+
+**Le jeu au mur** est ce qui distingue le padel du tennis. Une balle frappée
+doit toucher le sol adverse avant toute vitre : la volée de mur est faute, et
+envoyer la balle dans sa propre vitre après avoir frappé l'est aussi. En
+revanche, une fois ce rebond au sol effectué, les parois font partie du jeu —
+la balle peut y rebondir autant de fois que nécessaire et le défenseur peut la
+reprendre après.
 
 ## Architecture
 
@@ -53,23 +66,31 @@ src/
     audio.ts       sons synthétisés (aucun asset)
   game/
     ragdoll.ts     squelette articulé et pilotage de la pose
-    character.ts   joueur : ragdoll + raquette + frappe balistique
-    ball.ts        balle et détection des rebonds
-    rules.ts       arbitrage et comptage
+    character.ts   joueur : ragdoll + raquette + frappe
+    ball.ts        balle et détection des rebonds (sol, filet, vitres, sortie)
+    trajectory.ts  vol amorti : résolution des frappes et anticipation
+    aim.ts         visée : direction tenue → point du camp adverse
+    rules.ts       arbitrage, service et comptage
+    effects.ts     repère d'atterrissage, éclat d'impact
     ai.ts          adversaire
     game.ts        boucle de jeu, caméra, enchaînement des points
   ui/hud.ts        score, bannières, jauge de puissance
 ```
 
-Trois points ont demandé une attention particulière :
+Quatre points ont demandé une attention particulière :
 
 - **Les membres d'un même ragdoll ne doivent pas se percuter.** Les capsules se
   chevauchent par construction ; sans groupes de collision dédiés (`GROUPS`),
   la simulation explose en quelques images.
 - **La pose est pilotée en vitesse angulaire bornée**, pas en couple. Un
   asservissement en couple diverge dès que l'inertie des membres est faible.
-- **Les frappes sont résolues balistiquement** (`ballisticVelocity`) vers un
-  point du camp adverse, sinon la quasi-totalité des échanges finissent au filet.
+- **Les frappes sont résolues vers un point du camp adverse**, sinon la
+  quasi-totalité des échanges finissent au filet.
+- **L'amortissement de la balle fait partie du calcul** (`trajectory.ts`). La
+  distance parcourue n'est pas `v·t` mais `(v/d)(1 − e^(−d·t))` : résoudre sans
+  ce terme faisait atterrir chaque frappe environ deux mètres avant sa cible.
+  Le même modèle, intégré pas à pas avec les rebonds sur les vitres, sert à
+  l'IA pour anticiper les balles qui reviennent du mur.
 
 ## Tests
 
@@ -109,6 +130,8 @@ Issus d'une session de jeu réelle :
 
 ## Limites du MVP
 
-Match en 1v1 uniquement, pas de mode 2v2 ni de coéquipier. Le service est
-automatique (pas de placement manuel), et les parois latérales ne sont pas
-distinguées du fond dans le calcul des fautes.
+Match en 1v1 uniquement, pas de mode 2v2 ni de coéquipier. Le service part
+automatiquement dans le bon carré : on choisit le moment, pas le placement.
+Un service qui touche le filet est compté faute alors que la règle en fait un
+« let » à rejouer. Enfin, l'anticipation de l'IA s'arrête à trois secondes :
+au-delà de deux rebonds de vitre enchaînés, elle se replace au jugé.

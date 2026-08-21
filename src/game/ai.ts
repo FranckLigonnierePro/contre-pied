@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { COURT } from '../core/constants';
-import { predictLanding as ballisticLanding } from './effects';
+import { predictIntercept } from './trajectory';
 import type { Ball } from './ball';
 import type { Character } from './character';
 import type { ShotKind } from './character';
@@ -78,8 +78,7 @@ export function predictLanding(
   side: number,
   out: THREE.Vector3,
 ): THREE.Vector3 {
-  out.copy(ballisticLanding(pos, vel, 0.9));
-  out.y = 0;
+  predictIntercept(pos, vel, side, 0.9, 3, out);
   // On garde l'IA de son cote du filet.
   if (out.z * side < 0.5) out.z = side * 1.5;
   return out;

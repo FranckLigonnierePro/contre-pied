@@ -4,9 +4,10 @@ import { createStage, buildCourt } from '../core/scene';
 import { Input } from '../core/input';
 import { Sfx } from '../core/audio';
 import { Hud } from '../ui/hud';
-import { AI_SIDE, COURT, PALETTE, PLAYER_SIDE } from '../core/constants';
+import { AI_SIDE, PALETTE, PLAYER_SIDE } from '../core/constants';
 import { Ball } from './ball';
-import { Character, ballisticVelocity } from './character';
+import { Character } from './character';
+import { ballisticVelocity } from './trajectory';
 import { Rules } from './rules';
 import { Ai } from './ai';
 import { aimPoint } from './aim';
@@ -69,21 +70,30 @@ export class Game {
     this.rallyTimer = 0;
     this.slowmo = 1;
     const s = this.rules.server;
-    this.ball.reset(new THREE.Vector3(s * 1.2, 1.4, s * 7.2));
+    // La balle attend le serveur dans le carre d'ou il va engager, qui est
+    // l'oppose de celui qu'il vise.
+    this.ball.reset(new THREE.Vector3(-this.rules.serveBox * 1.4, 1.4, s * 7.2));
     this.hud.showBanner(
       s === PLAYER_SIDE ? 'A TOI DE SERVIR' : 'SERVICE ADVERSE',
       s === PLAYER_SIDE ? 'Espace pour engager' : '',
     );
+    this.marker.hide();
     if (s === AI_SIDE) this.pointTimer = 1.1;
   }
 
   private serve(side: number) {
-    const from = new THREE.Vector3(side * 1.2, 1.2, side * 7.0);
-    // Le service doit retomber dans le carre adverse : trajectoire resolue.
+    const box = this.rules.serveBox;
+    // Le serveur engage depuis le carre oppose a celui qu'il vise.
+    const from = new THREE.Vector3(-box * 1.4, 1.2, side * 7.0);
+    // Premiere balle : on attaque le fond du carre, quitte a faire faute.
+    // Deuxieme : on assure le centre. C'est ce qui rend la double faute rare
+    // sans la rendre impossible.
+    const attaque = this.rules.serveAttempt === 1;
+    const erreur = attaque ? 1.4 : 0.6;
     const target = new THREE.Vector3(
-      THREE.MathUtils.randFloatSpread(COURT.halfWidth * 1.2),
+      box * (attaque ? 3.6 : 2.2) + THREE.MathUtils.randFloatSpread(erreur),
       0,
-      -side * 4.5,
+      -side * (attaque ? 6.3 : 4.4) + THREE.MathUtils.randFloatSpread(erreur),
     );
     this.ball.reset(from);
     this.ball.launch(ballisticVelocity(from, target, 2.4));
@@ -91,6 +101,16 @@ export class Game {
     this.hud.hideBanner();
     this.sfx.hit(0.7);
     this.rallyTimer = 0;
+  }
+
+  /** Premiere faute de service : on remet la balle au serveur pour sa deuxieme. */
+  private onServeFault() {
+    const s = this.rules.server;
+    this.ball.reset(new THREE.Vector3(-this.rules.serveBox * 1.4, 1.4, s * 7.2));
+    this.sfx.wall();
+    this.hud.showBanner('FAUTE', `${this.rules.faultReason} — deuxieme balle`);
+    this.rallyTimer = 0;
+    this.pointTimer = 1.4;
   }
 
   private loop = (now: number) => {
@@ -164,11 +184,19 @@ export class Game {
 
     this.world.step();
 
+    // Le passage de la premiere a la deuxieme balle est le seul signal fiable
+    // d'une faute simple : se fier a la phase declencherait une fausse faute au
+    // moindre rebond de la balle posee devant le serveur.
+    let tentative = this.rules.serveAttempt;
     for (const ev of this.ball.step(dt)) {
       if (ev.kind === 'floor') this.sfx.bounce();
-      if (ev.kind === 'net') this.sfx.wall();
+      if (ev.kind === 'net' || ev.kind === 'wall') this.sfx.wall();
       const outcome = this.rules.onBallEvent(ev);
       if (outcome) this.concludePoint(outcome.winner, outcome.reason);
+      else if (this.rules.serveAttempt !== tentative) {
+        tentative = this.rules.serveAttempt;
+        this.onServeFault();
+      }
     }
 
     // Securite : si personne ne touche la balle pendant longtemps, on tranche.

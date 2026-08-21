@@ -15,6 +15,11 @@ export const BALL_RADIUS = 0.033;
  * retombe si vite apres son rebond qu'elle devient injouable.
  */
 export const GRAVITY = -9.81 * 1.35;
+/**
+ * Amortissement lineaire de la balle. Il freine le vol et doit etre pris en
+ * compte dans le calcul des trajectoires, sinon les frappes tombent court.
+ */
+export const BALL_DAMPING = 0.2;
 
 /** Le joueur humain occupe les z positifs, l'IA les z negatifs. */
 export const PLAYER_SIDE = 1;

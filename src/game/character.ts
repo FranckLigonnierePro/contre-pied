@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { Ragdoll } from './ragdoll';
 import { Ball } from './ball';
 import type { World } from '../core/physics';
-import { BALL_RADIUS, COURT, GRAVITY, GROUPS, PALETTE, PLAYER_SIDE } from '../core/constants';
+import { ballisticVelocity } from './trajectory';
+import { BALL_RADIUS, COURT, GROUPS, PALETTE, PLAYER_SIDE } from '../core/constants';
 
 export type ShotKind = 'plat' | 'lob' | 'smash';
 
@@ -259,17 +260,4 @@ function buildRacket(): THREE.Group {
   handle.position.y = -0.05;
   group.add(face, handle);
   return group;
-}
-
-/**
- * Vitesse initiale pour qu'une balle partant de `from` retombe sur `to` en
- * culminant `peak` metres au-dessus du point de depart.
- */
-export function ballisticVelocity(from: THREE.Vector3, to: THREE.Vector3, peak: number): THREE.Vector3 {
-  const g = Math.abs(GRAVITY);
-  const targetY = 0.4; // hauteur de rebond visee
-  const vy = Math.sqrt(2 * g * Math.max(0.05, peak));
-  // Duree totale : montee jusqu'au sommet, puis chute jusqu'a `targetY`.
-  const t = (vy + Math.sqrt(Math.max(0, vy * vy + 2 * g * (from.y - targetY)))) / g;
-  return new THREE.Vector3((to.x - from.x) / t, vy, (to.z - from.z) / t);
 }

@@ -1,4 +1,4 @@
-import { AI_SIDE, PLAYER_SIDE } from '../core/constants';
+import { AI_SIDE, COURT, PLAYER_SIDE } from '../core/constants';
 import type { BounceEvent } from './ball';
 
 export type Phase = 'serve' | 'rally' | 'point' | 'match';
@@ -22,19 +22,40 @@ export class Rules {
 
   /** Cote du dernier frappeur, 0 si la balle n'a pas encore ete touchee. */
   lastHitter = 0;
+  /** Tentative de service en cours : 1 ou 2. */
+  serveAttempt = 1;
+  /** Motif de la derniere faute de service, a afficher au serveur. */
+  faultReason: string | null = null;
   private bounces = 0;
+  /** Points deja joues dans le jeu en cours : decide le carre de service. */
+  private pointsInGame = 0;
+  /** Vrai tant que le premier rebond du service n'a pas ete juge. */
+  private judgingServe = false;
+
+  /**
+   * Signe en x du carre de service vise, dans le camp du receveur.
+   * Le service se joue en diagonale et change de carre a chaque point.
+   */
+  get serveBox(): number {
+    return this.pointsInGame % 2 === 0 ? -this.server : this.server;
+  }
 
   startPoint() {
     this.phase = 'serve';
     this.lastHitter = 0;
     this.bounces = 0;
     this.lastOutcome = null;
+    this.serveAttempt = 1;
+    this.faultReason = null;
+    this.judgingServe = false;
   }
 
   onServe(side: number) {
     this.phase = 'rally';
     this.lastHitter = side;
     this.bounces = 0;
+    this.judgingServe = true;
+    this.faultReason = null;
   }
 
   /**
@@ -58,6 +79,8 @@ export class Rules {
   onBallEvent(ev: BounceEvent): PointOutcome | null {
     if (this.phase !== 'rally') return null;
     const hitter = this.lastHitter || this.server;
+    // Tant que le service n'a pas rebondi, ce sont ses regles qui s'appliquent.
+    if (this.judgingServe) return this.judgeServe(ev);
 
     switch (ev.kind) {
       case 'net':
@@ -70,9 +93,68 @@ export class Rules {
         if (this.bounces >= 2) return this.award(hitter, 'Double rebond');
         return null;
       }
+      case 'wall': {
+        // C'est la regle qui fait le padel : une balle frappee doit toucher le
+        // sol adverse avant toute vitre. Apres ce rebond, les parois font
+        // partie du jeu et l'echange continue — c'est meme la tout l'interet.
+        if (this.bounces > 0) return null;
+        return ev.side === hitter
+          ? this.award(-hitter, 'Vitre de son propre camp')
+          : this.award(-hitter, 'Vitre avant le rebond');
+      }
       default:
         return null;
     }
+  }
+
+  /**
+   * Juge le service jusqu'a son premier rebond. Il doit retomber dans le carre
+   * diagonal : tout le reste est faute, et deux fautes de suite donnent le
+   * point au receveur.
+   */
+  private judgeServe(ev: BounceEvent): PointOutcome | null {
+    switch (ev.kind) {
+      case 'floor':
+        if (this.serveIsIn(ev)) {
+          this.judgingServe = false;
+          // Ce rebond est bien le premier du receveur : il compte comme tel.
+          this.bounces = 1;
+          return null;
+        }
+        return this.serveFault('Service hors du carre');
+      case 'net':
+        return this.serveFault('Service dans le filet');
+      case 'wall':
+        return this.serveFault('Service sur la vitre');
+      case 'out':
+        return this.serveFault('Service sorti');
+      default:
+        return null;
+    }
+  }
+
+  /** Le service est-il tombe dans le bon carre ? */
+  private serveIsIn(ev: BounceEvent): boolean {
+    const p = ev.position;
+    return (
+      ev.side === -this.server &&
+      Math.sign(p.x) === this.serveBox &&
+      Math.abs(p.z) < COURT.serviceLine
+    );
+  }
+
+  private serveFault(reason: string): PointOutcome | null {
+    this.judgingServe = false;
+    if (this.serveAttempt === 1) {
+      // Premiere faute : on rejoue, sans consequence sur le score.
+      this.serveAttempt = 2;
+      this.faultReason = reason;
+      this.phase = 'serve';
+      this.lastHitter = 0;
+      this.bounces = 0;
+      return null;
+    }
+    return this.award(-this.server, 'Double faute');
   }
 
   /** Le frappeur n'a pas atteint la balle a temps. */
@@ -84,6 +166,7 @@ export class Rules {
   private award(winner: number, reason: string): PointOutcome {
     this.phase = 'point';
     this.lastOutcome = { winner, reason };
+    this.pointsInGame += 1;
     this.addPoint(winner);
     return this.lastOutcome;
   }
@@ -108,11 +191,16 @@ export class Rules {
 
   private winGame(winner: number) {
     this.games.set(winner, this.games.get(winner)! + 1);
+    this.pointsInGame = 0;
     this.points.set(PLAYER_SIDE, 0);
     this.points.set(AI_SIDE, 0);
     this.advantage = 0;
     this.server = -this.server;
-    if (this.games.get(winner)! >= this.gamesToWin) this.phase = 'match';
+    // On ne bascule pas en phase 'match' ici : le point qui vient d'etre gagne
+    // doit d'abord se jouer jusqu'au bout (ralenti, chute, banniere). C'est
+    // l'appelant qui passe en 'match' une fois la celebration finie, en lisant
+    // `matchWinner`. Basculer tout de suite rendait la banniere de fin de match
+    // inatteignable : la boucle de jeu court-circuitait la phase 'point'.
   }
 
   get matchWinner(): number {
@@ -140,6 +228,7 @@ export class Rules {
     this.games.set(AI_SIDE, 0);
     this.advantage = 0;
     this.server = PLAYER_SIDE;
+    this.pointsInGame = 0;
     this.startPoint();
   }
 }

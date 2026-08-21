@@ -21,6 +21,9 @@ export const GRAVITY = -9.81 * 1.35;
  */
 export const BALL_DAMPING = 0.2;
 
+/** Vitesse de course de reference, en m/s. */
+export const SPRINT_SPEED = 5.4;
+
 /** Le joueur humain occupe les z positifs, l'IA les z negatifs. */
 export const PLAYER_SIDE = 1;
 export const AI_SIDE = -1;

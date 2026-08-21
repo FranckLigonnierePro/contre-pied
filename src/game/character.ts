@@ -4,7 +4,7 @@ import { Ball } from './ball';
 import type { World } from '../core/physics';
 import { ballisticVelocity } from './trajectory';
 import { randSpread } from '../core/random';
-import { BALL_RADIUS, COURT, GROUPS, PALETTE, PLAYER_SIDE } from '../core/constants';
+import { BALL_RADIUS, COURT, GROUPS, PALETTE, PLAYER_SIDE, SPRINT_SPEED } from '../core/constants';
 
 export type ShotKind = 'plat' | 'lob' | 'smash';
 
@@ -37,6 +37,9 @@ const _lead = new THREE.Vector3();
 export class Character {
   readonly ragdoll: Ragdoll;
   readonly racket: THREE.Group;
+
+  /** Vitesse de course. Le niveau de l'IA se joue en partie dessus. */
+  speed = SPRINT_SPEED;
 
   private swingT = -1;
   private swingKind: ShotKind = 'plat';
@@ -114,7 +117,7 @@ export class Character {
     this.time += dt;
     this.cooldown = Math.max(0, this.cooldown - dt);
     const sprinting = move.lengthSq() > 0.01;
-    this.ragdoll.update(dt, move, sprinting ? 5.4 : 0, facing);
+    this.ragdoll.update(dt, move, sprinting ? this.speed : 0, facing);
 
     let hit: HitResult | null = null;
     if (this.swingT >= 0) {

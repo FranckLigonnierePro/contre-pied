@@ -64,8 +64,10 @@ jobs:
           # Une meme graine doit rejouer exactement la meme partie : c'est ce
           # qui rend les chiffres ci-dessous comparables d'un commit a l'autre.
           npm run sim -- 20 1 --determinisme
-          # Equilibrage : deux IA jouent 100 points et le resultat doit rester
-          # dans des fourchettes. Un reglage peut sortir le jeu de sa zone
-          # jouable sans casser le moindre test.
-          npm run sim 100 1
+          # Equilibrage : deux IA jouent 300 points et les moyennes doivent
+          # rester dans des fourchettes. Un reglage peut sortir le jeu de sa
+          # zone jouable sans casser le moindre test. On moyenne sur plusieurs
+          # graines car les mesures varient trop d'une partie a l'autre pour
+          # qu'une seule fasse un garde-fou fiable.
+          npm run sim -- 100 1 --graines=3
           kill $preview

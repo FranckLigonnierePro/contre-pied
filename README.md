@@ -109,6 +109,7 @@ celle où une régression passe le plus facilement inaperçue.
 npm run build
 npm run preview &
 npm run sim 100 1                    # 100 points, graine 1
+npm run sim -- 100 1 --graines=3     # moyenne sur 3 graines
 npm run sim -- 20 1 --determinisme   # la même graine rejoue la même partie
 ```
 
@@ -121,17 +122,40 @@ Tout l'aléatoire du jeu passe par [`src/core/random.ts`](src/core/random.ts), d
 une graine rejoue exactement la même partie — à condition de partir d'un monde
 neuf, ce que fait le paramètre d'URL `?sim=1` en gelant la boucle de rendu.
 
-Valeurs de référence actuelles (graines 1 à 3, 100 points chacune) :
+Valeurs de référence actuelles (graines 1 à 4, 400 points) :
 
 | Mesure | Observé |
 |---|---|
-| Échange moyen | 5,9 à 6,6 frappes |
-| Points gagnés côté joueur | 62 à 65 % |
-| Fautes de service | 26 à 29 % des points |
+| Échange moyen | 5,6 frappes |
+| Points gagnés côté joueur | 56 % |
+| Fautes de service | 28 % des points |
 
-Les 63 % côté joueur ne sont pas du bruit : les deux camps ne placent pas leurs
-balles de la même façon. Le côté joueur vise par la direction tenue
-([`aim.ts`](src/game/aim.ts)), l'IA tire son point de chute au hasard.
+Une seule graine ne suffit pas à juger : le taux de fautes de service a un
+écart-type de près de 10 points d'une partie à l'autre. D'où `--graines=N`, qui
+moyenne avant d'appliquer les fourchettes — c'est la forme qu'utilise la CI.
+
+### Niveaux de l'IA
+
+`--niveau=N` fait varier le camp adverse, le camp joueur restant à 0.5 comme
+étalon. La part des points gagnés par l'IA sur 300 points :
+
+| Niveau | Vitesse de course | Points IA | Échange moyen | Distance ratée |
+|---|---|---|---|---|
+| 0 | 4,32 m/s | 18 % | 2,87 | — |
+| 0,25 — facile | 4,86 m/s | 26 % | 3,81 | 1,57 m |
+| 0,5 — moyen | 5,40 m/s | 42 % | 5,37 | 1,48 m |
+| 0,75 — difficile | 5,94 m/s | 50 % | 9,07 | 1,19 m |
+| 1 | 6,48 m/s | 43 % | 7,90 | 0,92 m |
+
+La courbe monte jusqu'à 0,75 puis **redescend**, sans cause établie : ni un
+plancher de dispersion de visée ni le déclenchement déterministe ne
+l'expliquent, les deux ayant été mesurés — le premier dégrade même le
+résultat. Les niveaux proposés s'arrêtent donc à 0,75.
+
+La « distance ratée » est l'écart raquette-balle au moment où un point se perd
+sur double rebond. C'est elle qui a orienté le travail sur l'IA : les points ne
+se perdaient pas par mauvaise anticipation mais au dernier mètre, pour un rayon
+de contact de 0,7 m.
 
 ## Test de fumée
 

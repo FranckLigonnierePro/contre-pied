@@ -25,7 +25,7 @@ export class Game {
   player!: Character;
   opponent!: Character;
   rules = new Rules();
-  private ai = new Ai();
+  private ai: Ai = new Ai();
   private marker!: LandingMarker;
   private flash!: ImpactFlash;
   private input: Input;
@@ -148,9 +148,10 @@ export class Game {
    * Bascule en mode simulation : les deux camps sont joues par l'IA, l'aleatoire
    * est reproductible et le rendu est coupe. Point d'entree de `npm run sim`.
    */
-  simulate(seed: number, difficulty = 0.5) {
+  simulate(seed: number, difficulty = 0.5, difficultyIA = 0.5) {
     seedRandom(seed);
     this.autoPlayer = new Ai(difficulty);
+    this.ai = new Ai(difficultyIA);
     this.stop();
     this.rules.reset();
     this.newPoint();
@@ -211,7 +212,8 @@ export class Game {
     }
     this.serveTimer = 1.1;
 
-    const d = this.autoPlayer!.decide(this.player, this.ball, FIXED_DT);
+    this.player.speed = this.autoPlayer!.moveSpeed;
+    const d = this.autoPlayer!.decide(this.player, this.opponent, this.ball, FIXED_DT);
     s.move.copy(d.move);
     if (d.swing) {
       s.swing = true;
@@ -322,7 +324,8 @@ export class Game {
   }
 
   private updateOpponent(dt: number) {
-    const decision = this.ai.decide(this.opponent, this.ball, dt);
+    this.opponent.speed = this.ai.moveSpeed;
+    const decision = this.ai.decide(this.opponent, this.player, this.ball, dt);
     // On interroge l'arbitre avant de declencher : inutile de gaspiller un
     // swing sur une balle que l'IA n'a pas le droit de toucher.
     if (decision.swing && this.rules.canHit(AI_SIDE)) {

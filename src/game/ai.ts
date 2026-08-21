@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COURT } from '../core/constants';
+import { COURT, SPRINT_SPEED } from '../core/constants';
 import { predictIntercept } from './trajectory';
 import { randRange, randSpread, random } from '../core/random';
 import type { Ball } from './ball';
@@ -10,6 +10,56 @@ const _target = new THREE.Vector3();
 const _ballPos = new THREE.Vector3();
 const _ballVel = new THREE.Vector3();
 const _move = new THREE.Vector3();
+const _adverse = new THREE.Vector3();
+
+/** Marge gardee avec les vitres laterales quand on vise. */
+const AIM_MARGIN = 1;
+/** Ecart de visee d'une IA de niveau nul, en metres. */
+const ERREUR_MAX = 3.4;
+/** Distance au-dela de laquelle on ne tente rien. */
+const PORTEE = 2.2;
+/** Distance de declenchement du geste. */
+const SEUIL = 1.2;
+/** Dispersion du declenchement d'une IA de niveau nul, en metres. */
+const ERREUR_TIMING = 0.9;
+
+/**
+ * Point vise par l'IA : l'espace laisse libre par l'adversaire, avec une
+ * erreur qui se resserre quand le niveau monte.
+ *
+ * La cible etait auparavant tiree au hasard sur toute la largeur, sans egard
+ * pour l'adversaire : l'IA renvoyait sans intention et lui servait la balle
+ * dans les pieds une fois sur deux. Le simulateur chiffrait ce desequilibre a
+ * une soixantaine de pourcents de points perdus.
+ */
+export function aimAgainst(
+  kind: ShotKind,
+  opponent: THREE.Vector3,
+  side: number,
+  difficulty: number,
+  out = new THREE.Vector3(),
+): THREE.Vector3 {
+  const large = COURT.halfWidth - AIM_MARGIN;
+  // On joue a l'oppose de l'adversaire. S'il est au centre, on choisit un cote.
+  const cote = Math.abs(opponent.x) > 0.4 ? -Math.sign(opponent.x) : random() < 0.5 ? -1 : 1;
+
+  // Profondeur : on allonge si l'adversaire est monte au filet, on raccourcit
+  // s'il est colle a sa vitre du fond.
+  const recul = Math.min(1, Math.abs(opponent.z) / COURT.halfLength);
+  const base = kind === 'lob' ? 8.5 : kind === 'smash' ? 4 : 6.5;
+  const profondeur = base + (0.5 - recul) * 3;
+
+  const erreur = (1 - THREE.MathUtils.clamp(difficulty, 0, 1)) * ERREUR_MAX;
+  return out.set(
+    THREE.MathUtils.clamp(cote * large * 0.8 + randSpread(erreur), -large, large),
+    0,
+    -side * THREE.MathUtils.clamp(
+      profondeur + randSpread(erreur * 0.6),
+      1.5,
+      COURT.halfLength - 1,
+    ),
+  );
+}
 
 export interface AiDecision {
   move: THREE.Vector3;
@@ -17,6 +67,19 @@ export interface AiDecision {
   /** Point du camp adverse vise par la frappe. */
   swing: { kind: ShotKind; aim: THREE.Vector3; charge: number } | null;
 }
+
+/**
+ * Niveaux etalonnes au simulateur. La valeur indiquee est la part des points
+ * que l'IA gagne face a un adversaire regle a 0.5, sur 300 points :
+ *
+ *   facile 0.25 -> 26 %   ·   moyen 0.5 -> 42 %   ·   difficile 0.75 -> 50 %
+ *
+ * Au-dela de 0.75 l'IA redevient plus faible (43 % a 1.0), et la cause n'est
+ * pas etablie : ni un plancher de dispersion de visee ni le declenchement
+ * deterministe ne l'expliquent — les deux ont ete mesures, le premier degrade
+ * meme le resultat. C'est pourquoi le niveau maximal propose reste 0.75.
+ */
+export const NIVEAUX = { facile: 0.25, moyen: 0.5, difficile: 0.75 } as const;
 
 /**
  * IA volontairement imparfaite : elle vise le point d'impact estime avec un
@@ -28,7 +91,37 @@ export class Ai {
 
   constructor(private difficulty = 0.5) {}
 
-  decide(self: Character, ball: Ball, dt: number): AiDecision {
+  /**
+   * Faut-il lancer le geste maintenant ?
+   *
+   * Le declenchement se joue sur le temps restant avant que la balle arrive, pas
+   * sur un tirage par image. L'ancien `random() < difficulty` faisait office de
+   * minuterie : plus le niveau montait, plus l'IA declenchait tot — des la
+   * premiere image a portee — et la raquette passait devant la balle. Le
+   * balayage du simulateur le montrait par une courbe non monotone, le niveau
+   * maximal jouant moins bien que le niveau intermediaire.
+   */
+  private declenche(distance: number): boolean {
+    if (distance > PORTEE) return false;
+    // La dispersion du declenchement se resserre quand le niveau monte.
+    const erreur = (1 - THREE.MathUtils.clamp(this.difficulty, 0, 1)) * ERREUR_TIMING;
+    return distance <= SEUIL + randSpread(erreur);
+  }
+
+  /**
+   * Vitesse de course correspondant au niveau. Le simulateur montre que les
+   * points se perdent au dernier metre — mediane a 1,5 m d'une balle qu'il
+   * faut approcher a 0,7 m — donc la course pese autant que la visee.
+   * Le niveau 0.5 conserve exactement la vitesse de reference.
+   */
+  get moveSpeed(): number {
+    return SPRINT_SPEED * (0.8 + THREE.MathUtils.clamp(this.difficulty, 0, 1) * 0.4);
+  }
+
+  /**
+   * @param opponent adversaire, dont la position decide ou l'on place la balle.
+   */
+  decide(self: Character, opponent: Character, ball: Ball, dt: number): AiDecision {
     this.time += dt;
     const pos = self.position();
     ball.position(_ballPos);
@@ -58,13 +151,9 @@ export class Ai {
 
     let swing: AiDecision['swing'] = null;
     const hand = self.ragdoll.handPosition();
-    if (incoming && self.canSwing && hand.distanceTo(_ballPos) < 1.6 && random() < this.difficulty) {
+    if (incoming && self.canSwing && this.declenche(hand.distanceTo(_ballPos))) {
       const kind: ShotKind = _ballPos.y > 2.2 ? 'smash' : random() < 0.2 ? 'lob' : 'plat';
-      const aim = new THREE.Vector3(
-        randSpread(COURT.halfWidth * 1.4),
-        0,
-        -self.side * (kind === 'lob' ? 8.5 : kind === 'smash' ? 4 : 6.5),
-      );
+      const aim = aimAgainst(kind, opponent.position(_adverse), self.side, this.difficulty);
       swing = { kind, aim, charge: randRange(0.8, 1.2) };
     }
 

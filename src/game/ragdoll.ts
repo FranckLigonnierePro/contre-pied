@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RAPIER, type World } from '../core/physics';
 import { PALETTE } from '../core/constants';
+import { createPlayerSkin, syncPlayerSkin, type PlayerSkin } from './playerModel';
 
 type Body = RAPIER.RigidBody;
 
@@ -73,6 +74,7 @@ export class Ragdoll {
   yaw = 0;
 
   private spawn: THREE.Vector3;
+  private skin: PlayerSkin | null = null;
 
   constructor(
     world: World,
@@ -81,6 +83,7 @@ export class Ragdoll {
     yaw: number,
     shirtColor: number,
     collisionGroups: number,
+    playerModel?: THREE.Group,
   ) {
     this.spawn = position.clone();
     this.yaw = yaw;
@@ -115,12 +118,18 @@ export class Ragdoll {
         new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
       );
       mesh.castShadow = true;
+      if (playerModel) mesh.visible = false;
       this.group.add(mesh);
 
       this.parts.set(spec.name, { spec, body, mesh, target: new THREE.Quaternion(), gain: 1 });
     }
 
-    this.addFace(shirtColor);
+    if (playerModel) {
+      this.skin = createPlayerSkin(playerModel);
+      this.group.add(this.skin.root);
+    } else {
+      this.addFace(shirtColor);
+    }
 
     // Les articulations ne font que tenir les membres ensemble : tout le
     // mouvement vient de l'asservissement en couple.
@@ -301,6 +310,9 @@ export class Ragdoll {
       const r = part.body.rotation();
       part.mesh.position.set(t.x, t.y, t.z);
       part.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+    }
+    if (this.skin) {
+      syncPlayerSkin(this.skin, this.parts, { yaw: this.yaw, plantFeet: !this.isDown });
     }
   }
 

@@ -57,6 +57,7 @@ export class Character {
     color: number,
     /** Index dans l'equipe : 0 = gauche, 1 = droite. */
     readonly index = 0,
+    playerModel?: THREE.Group,
   ) {
     const spawn = spawnPosition(side, index);
     this.ragdoll = new Ragdoll(
@@ -66,6 +67,7 @@ export class Character {
       side > 0 ? Math.PI : 0,
       color,
       collisionGroup(side, index),
+      playerModel,
     );
     this.racket = buildRacket();
     scene.add(this.racket);

@@ -14,6 +14,7 @@ import { Ai } from './ai';
 import { aimPoint } from './aim';
 import { randSpread, seedRandom } from '../core/random';
 import { ImpactFlash, LandingMarker } from './effects';
+import { loadPlayerModel } from './playerModel';
 
 const _v = new THREE.Vector3();
 const _camTarget = new THREE.Vector3();
@@ -77,13 +78,14 @@ export class Game {
     this.marker = new LandingMarker(this.stage.scene);
     this.flash = new ImpactFlash(this.stage.scene);
 
+    const playerModel = await loadPlayerModel();
     this.teamPlayer = [
-      new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.joueur, 0),
-      new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.partenaire, 1),
+      new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.joueur, 0, playerModel),
+      new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.partenaire, 1, playerModel),
     ];
     this.teamAi = [
-      new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia, 0),
-      new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia2, 1),
+      new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia, 0, playerModel),
+      new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia2, 1, playerModel),
     ];
 
     // Poignee de debogage, utilisee par le test de fumee (scripts/smoke.mjs).

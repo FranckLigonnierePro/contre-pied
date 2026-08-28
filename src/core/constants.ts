@@ -31,6 +31,14 @@ export const AI_SIDE = -1;
 /** Decalage lateral des partenaires en double (en metres). */
 export const DOUBLES_OFFSET = 2.2;
 
+/** Position de repos en double : chaque joueur couvre un cote et une profondeur. */
+export function doublesHomePosition(side: number, index: number): [number, number, number] {
+  const x = index === 0 ? -DOUBLES_OFFSET : DOUBLES_OFFSET;
+  // Index 0 au fond, index 1 au filet : formation classique en double.
+  const z = index === 0 ? side * 8.4 : side * 5.6;
+  return [x, 0, z];
+}
+
 export const PALETTE = {
   sol: 0x1f6f4a,
   solClair: 0x2a8a5c,

@@ -4,7 +4,7 @@ import { Ball } from './ball';
 import type { World } from '../core/physics';
 import { ballisticVelocity } from './trajectory';
 import { randSpread } from '../core/random';
-import { BALL_RADIUS, COURT, DOUBLES_OFFSET, PALETTE, SPRINT_SPEED, collisionGroup } from '../core/constants';
+import { BALL_RADIUS, COURT, PALETTE, SPRINT_SPEED, collisionGroup, doublesHomePosition } from '../core/constants';
 
 export type ShotKind = 'plat' | 'lob' | 'smash';
 
@@ -239,8 +239,8 @@ export class Character {
     this.ragdoll.sync();
   }
 
-  respawn() {
-    const spawn = spawnPosition(this.side, this.index);
+  respawn(at?: THREE.Vector3) {
+    const spawn = at ?? spawnPosition(this.side, this.index);
     this.ragdoll.respawn(spawn, this.side > 0 ? Math.PI : 0);
     this.swingT = -1;
     this.cooldown = 0;
@@ -273,8 +273,8 @@ function buildRacket(): THREE.Group {
   return group;
 }
 
-/** Position de depart en double : partenaires decales lateralement. */
+/** Position de depart en double : chaque joueur reste sur son cote du camp. */
 function spawnPosition(side: number, index: number): THREE.Vector3 {
-  const x = index === 0 ? -DOUBLES_OFFSET : DOUBLES_OFFSET;
-  return new THREE.Vector3(x, 0, side * 7.5);
+  const [x, y, z] = doublesHomePosition(side, index);
+  return new THREE.Vector3(x, y, z);
 }

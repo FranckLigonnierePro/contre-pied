@@ -4,7 +4,7 @@ import { createStage, buildCourt, buildStadium } from '../core/scene';
 import { Input } from '../core/input';
 import { Sfx } from '../core/audio';
 import { Hud } from '../ui/hud';
-import { AI_SIDE, PALETTE, PLAYER_SIDE } from '../core/constants';
+import { AI_SIDE, PALETTE, PLAYER_SIDE, doublesHomePosition } from '../core/constants';
 import { Ball } from './ball';
 import { Character } from './character';
 import { ballisticVelocity } from './trajectory';
@@ -31,8 +31,8 @@ export class Game {
   /** Raccourci vers le premier adversaire (compat simulateur). */
   get opponent() { return this.teamAi[0]; }
   rules = new Rules();
-  private aiOpponents: Ai[] = [new Ai(), new Ai()];
-  private aiPartner: Ai = new Ai(0.45);
+  private aiOpponents: Ai[] = [new Ai(0.5, 0, 0), new Ai(0.5, 1, 2.1)];
+  private aiPartner: Ai = new Ai(0.45, 1, 1.3);
   private marker!: LandingMarker;
   private flash!: ImpactFlash;
   private input: Input;
@@ -116,6 +116,7 @@ export class Game {
   private newPoint() {
     this.rules.startPoint();
     for (const c of this.allCharacters()) c.respawn();
+    this.positionForServe();
     this.rallyTimer = 0;
     this.slowmo = 1;
     const s = this.rules.server;
@@ -127,6 +128,26 @@ export class Game {
     );
     this.marker.hide();
     if (s === AI_SIDE) this.pointTimer = 1.1;
+  }
+
+  /** Place chaque joueur sur son poste au debut du point. */
+  private positionForServe() {
+    const box = this.rules.serveBox;
+    const serverSide = this.rules.server;
+    for (const c of this.allCharacters()) {
+      if (c.side === serverSide && c.index === this.rules.servePlayerIndex) {
+        const x = c.index === 0 ? -box * 1.4 : box * 1.4;
+        c.respawn(new THREE.Vector3(x, 0, c.side * 7.0));
+      } else if (c.side === serverSide) {
+        const [x, y, z] = doublesHomePosition(c.side, 1);
+        c.respawn(new THREE.Vector3(x, y, z));
+      } else if (c.index === 0) {
+        c.respawn(new THREE.Vector3(box * 1.4, 0, c.side * 8.2));
+      } else {
+        const [x, y, z] = doublesHomePosition(c.side, 1);
+        c.respawn(new THREE.Vector3(x, y, z));
+      }
+    }
   }
 
   private serve(side: number) {
@@ -180,9 +201,9 @@ export class Game {
    */
   simulate(seed: number, difficulty = 0.5, difficultyIA = 0.5) {
     seedRandom(seed);
-    this.autoPlayer = new Ai(difficulty);
-    this.aiOpponents = [new Ai(difficultyIA), new Ai(difficultyIA)];
-    this.aiPartner = new Ai(difficulty * 0.9);
+    this.autoPlayer = new Ai(difficulty, 0, 0);
+    this.aiOpponents = [new Ai(difficultyIA, 0, 0), new Ai(difficultyIA, 1, 2.1)];
+    this.aiPartner = new Ai(difficulty * 0.9, 1, 1.3);
     this.stop();
     this.rules.reset();
     this.newPoint();
@@ -243,7 +264,7 @@ export class Game {
     this.serveTimer = 1.1;
 
     this.player.speed = this.autoPlayer!.moveSpeed;
-    const d = this.autoPlayer!.decide(this.player, this.teamAi, this.ball, FIXED_DT);
+    const d = this.autoPlayer!.decide(this.player, this.teamAi, this.ball, FIXED_DT, [this.teamPlayer[1]]);
     s.move.copy(d.move);
     if (d.swing) {
       s.swing = true;
@@ -339,7 +360,7 @@ export class Game {
   private updatePartner(dt: number) {
     const partner = this.teamPlayer[1];
     partner.speed = this.aiPartner.moveSpeed;
-    const decision = this.aiPartner.decide(partner, this.teamAi, this.ball, dt);
+    const decision = this.aiPartner.decide(partner, this.teamAi, this.ball, dt, [this.teamPlayer[0]]);
     if (decision.swing && this.rules.canHit(PLAYER_SIDE)) {
       partner.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
     }
@@ -353,7 +374,8 @@ export class Game {
     for (let i = 0; i < this.teamAi.length; i++) {
       const opp = this.teamAi[i];
       opp.speed = this.aiOpponents[i].moveSpeed;
-      const decision = this.aiOpponents[i].decide(opp, this.teamPlayer, this.ball, dt);
+      const mates = this.teamAi.filter((_, j) => j !== i);
+      const decision = this.aiOpponents[i].decide(opp, this.teamPlayer, this.ball, dt, mates);
       if (decision.swing && this.rules.canHit(AI_SIDE)) {
         opp.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
       }

@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import { RAPIER, type World } from './physics';
 import { COURT, GROUPS, PALETTE } from './constants';
+import { BASE_DECOR, BASE_STAND, BASE_WALL, markPlayerOccluder } from './cameraOccluders';
 
 export interface Stage {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
 }
+
+/** Groupe de meshes occultants cote joueur (mur + gradins derriere la camera). */
+export type PlayerOccluders = THREE.Group;
 
 export function createStage(container: HTMLElement): Stage {
   const scene = new THREE.Scene();
@@ -45,7 +49,8 @@ export function createStage(container: HTMLElement): Stage {
 }
 
 /** Construit le court : sol, lignes, filet, parois vitrees + les colliders correspondants. */
-export function buildCourt(scene: THREE.Scene, world: World) {
+export function buildCourt(scene: THREE.Scene, world: World): PlayerOccluders {
+  const playerOccluders = new THREE.Group();
   const { halfWidth: hw, halfLength: hl } = COURT;
 
   const floor = new THREE.Mesh(
@@ -82,10 +87,22 @@ export function buildCourt(scene: THREE.Scene, world: World) {
     side: THREE.DoubleSide,
   });
 
-  const wall = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), glassMat);
+  const playerGlassMat = glassMat.clone();
+  playerGlassMat.opacity = BASE_WALL;
+  playerGlassMat.depthWrite = false;
+
+  const wall = (
+    w: number, h: number, d: number, x: number, y: number, z: number,
+    mat: THREE.Material,
+    occluder = false,
+  ) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x, y, z);
     scene.add(mesh);
+    if (occluder) {
+      markPlayerOccluder(mesh, BASE_WALL);
+      playerOccluders.add(mesh);
+    }
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z));
     world.createCollider(
       RAPIER.ColliderDesc.cuboid(w / 2, h / 2, d / 2).setRestitution(0.7).setFriction(0.3).setCollisionGroups(GROUPS.env),
@@ -95,25 +112,31 @@ export function buildCourt(scene: THREE.Scene, world: World) {
 
   const bh = COURT.backWallHeight;
   const sh = COURT.sideWallHeight;
-  wall(hw * 2, bh, 0.1, 0, bh / 2, -hl); // fond IA
-  wall(hw * 2, bh, 0.1, 0, bh / 2, hl); // fond joueur
-  wall(0.1, sh, hl * 2, -hw, sh / 2, 0); // lateral gauche
-  wall(0.1, sh, hl * 2, hw, sh / 2, 0); // lateral droit
+  wall(hw * 2, bh, 0.1, 0, bh / 2, -hl, glassMat); // fond IA
+  wall(hw * 2, bh, 0.1, 0, bh / 2, hl, playerGlassMat, true); // fond joueur (cote camera)
+  wall(0.1, sh, hl * 2, -hw, sh / 2, 0, glassMat); // lateral gauche
+  wall(0.1, sh, hl * 2, hw, sh / 2, 0, glassMat); // lateral droit
 
   // Montants d'angle, purement decoratifs.
   const postMat = new THREE.MeshStandardMaterial({ color: PALETTE.grillage, roughness: 0.6 });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, bh, 0.12), postMat);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, bh, 0.12), postMat.clone());
     post.position.set(sx * hw, bh / 2, sz * hl);
     post.castShadow = true;
+    if (sz > 0) {
+      markPlayerOccluder(post, BASE_DECOR, 0.38);
+      playerOccluders.add(post);
+    }
     scene.add(post);
   }
 
   buildNet(scene, world);
+  return playerOccluders;
 }
 
 /** Decor du stade : tribunes, eclairage, cloture et bannieres. */
-export function buildStadium(scene: THREE.Scene) {
+export function buildStadium(scene: THREE.Scene): PlayerOccluders {
+  const playerOccluders = new THREE.Group();
   const { halfWidth: hw, halfLength: hl } = COURT;
 
   // Tribunes en gradins autour du court.
@@ -123,18 +146,16 @@ export function buildStadium(scene: THREE.Scene) {
   const tierH = 0.55;
   const tierD = 1.1;
 
-  const buildStandRow = (w: number, d: number, x: number, z: number, rotY: number) => {
+  const buildStandRow = (w: number, d: number, x: number, z: number, rotY: number, occluder = false) => {
     const group = new THREE.Group();
     for (let i = 0; i < tiers; i++) {
-      const step = new THREE.Mesh(new THREE.BoxGeometry(w, tierH, tierD), standMat);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(w, tierH, tierD), standMat.clone());
       step.position.set(0, tierH * (i + 0.5), -tierD * i);
       step.receiveShadow = true;
       group.add(step);
-      // Rangee de sieges coloree.
-      const seats = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, tierH * 0.35, tierD * 0.7), seatMat);
+      const seats = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, tierH * 0.35, tierD * 0.7), seatMat.clone());
       seats.position.set(0, tierH * (i + 1) - tierH * 0.15, -tierD * i);
       group.add(seats);
-      // Touches de couleur pour simuler la foule.
       const crowd = new THREE.Mesh(
         new THREE.BoxGeometry(w * 0.88, tierH * 0.25, tierD * 0.5),
         new THREE.MeshStandardMaterial({
@@ -144,14 +165,18 @@ export function buildStadium(scene: THREE.Scene) {
       );
       crowd.position.set(0, tierH * (i + 1) + tierH * 0.05, -tierD * i);
       group.add(crowd);
+      if (occluder) {
+        for (const m of [step, seats, crowd]) markPlayerOccluder(m, BASE_STAND);
+      }
     }
     group.position.set(x, 0, z);
     group.rotation.y = rotY;
     scene.add(group);
+    if (occluder) playerOccluders.add(group);
   };
 
   const margin = 3.5;
-  buildStandRow(hw * 2 + 8, tierD, 0, hl + margin, 0);
+  buildStandRow(hw * 2 + 8, tierD, 0, hl + margin, 0, true); // gradins cote camera
   buildStandRow(hw * 2 + 8, tierD, 0, -hl - margin, Math.PI);
   buildStandRow(hl * 2 + 8, tierD, -hw - margin, 0, Math.PI / 2);
   buildStandRow(hl * 2 + 8, tierD, hw + margin, 0, -Math.PI / 2);
@@ -207,6 +232,8 @@ export function buildStadium(scene: THREE.Scene) {
     const banner = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.8, 0.06), bannerMat.clone());
     (banner.material as THREE.MeshStandardMaterial).color.setHex(bannerColors[i]);
     banner.position.set(-hw - 2.5 + i * 2.5, 2.5, hl + 2.8);
+    markPlayerOccluder(banner, BASE_DECOR, 0.42);
+    playerOccluders.add(banner);
     scene.add(banner);
   }
 
@@ -223,6 +250,7 @@ export function buildStadium(scene: THREE.Scene) {
   );
   scoreGlow.position.set(0, 3.2, -hl - 2.42);
   scene.add(scoreGlow);
+  return playerOccluders;
 }
 
 function addLines(scene: THREE.Scene) {

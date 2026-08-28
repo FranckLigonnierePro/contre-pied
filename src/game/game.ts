@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { initPhysics, FIXED_DT, type World } from '../core/physics';
 import { createStage, buildCourt, buildStadium } from '../core/scene';
+import { CameraOccluders } from '../core/cameraOccluders';
 import { Input } from '../core/input';
 import { Sfx } from '../core/audio';
 import { Hud } from '../ui/hud';
@@ -38,6 +39,7 @@ export class Game {
   private input: Input;
   private hud: Hud;
   private sfx = new Sfx();
+  private occluders = new CameraOccluders();
 
   /**
    * Pilote automatique du joueur. Renseigne, le camp du joueur est joue par
@@ -67,8 +69,9 @@ export class Game {
   async start() {
     this.world = await initPhysics();
     this.stage = createStage(this.container);
-    buildCourt(this.stage.scene, this.world);
-    buildStadium(this.stage.scene);
+    const courtOccluders = buildCourt(this.stage.scene, this.world);
+    const stadiumOccluders = buildStadium(this.stage.scene);
+    this.occluders.register(courtOccluders, stadiumOccluders);
 
     this.ball = new Ball(this.world, this.stage.scene);
     this.marker = new LandingMarker(this.stage.scene);
@@ -232,6 +235,7 @@ export class Game {
     }
     for (const c of this.allCharacters()) c.sync();
     this.updateCamera(raw);
+    this.occluders.update(raw, this.ball.position());
     this.stage.renderer.render(this.stage.scene, this.stage.camera);
   };
 
@@ -334,6 +338,7 @@ export class Game {
     for (const ev of this.ball.step(dt)) {
       if (ev.kind === 'floor') this.sfx.bounce();
       if (ev.kind === 'net' || ev.kind === 'wall') this.sfx.wall();
+      if (ev.kind === 'wall') this.occluders.onWallBounce(ev.side);
       const outcome = this.rules.onBallEvent(ev);
       if (outcome) this.concludePoint(outcome.winner, outcome.reason);
       else if (this.rules.serveAttempt !== tentative) {

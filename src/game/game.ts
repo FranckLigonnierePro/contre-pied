@@ -316,8 +316,14 @@ export class Game {
     }
 
     this.updatePlayer(dt, input);
-    this.updatePartner(dt);
-    this.updateOpponents(dt);
+    if (this.rules.phase === 'rally') {
+      this.updatePartner(dt);
+      this.updateOpponents(dt);
+    } else {
+      // Pendant le service ou la celebration, les IA restent sur leur poste.
+      this.holdAi(this.teamPlayer[1], dt);
+      for (const opp of this.teamAi) this.holdAi(opp, dt);
+    }
 
     this.world.step();
 
@@ -351,6 +357,13 @@ export class Game {
       this.rules.games.get(PLAYER_SIDE)!,
       this.rules.games.get(AI_SIDE)!,
     );
+  }
+
+  private holdAi(char: Character, dt: number) {
+    const pos = char.position();
+    const ballPos = this.ball.position();
+    const facing = Math.atan2(pos.x - ballPos.x, pos.z - ballPos.z);
+    char.update(dt, _v.set(0, 0, 0), facing, this.ball, false);
   }
 
   private updatePlayer(dt: number, input: ReturnType<Input['poll']>) {

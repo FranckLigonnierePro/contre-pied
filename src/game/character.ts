@@ -4,7 +4,7 @@ import { Ball } from './ball';
 import type { World } from '../core/physics';
 import { ballisticVelocity } from './trajectory';
 import { randSpread } from '../core/random';
-import { BALL_RADIUS, COURT, GROUPS, PALETTE, PLAYER_SIDE, SPRINT_SPEED } from '../core/constants';
+import { BALL_RADIUS, COURT, PALETTE, SPRINT_SPEED, collisionGroup, doublesHomePosition } from '../core/constants';
 
 export type ShotKind = 'plat' | 'lob' | 'smash';
 
@@ -55,15 +55,19 @@ export class Character {
     private scene: THREE.Scene,
     readonly side: number,
     color: number,
+    /** Index dans l'equipe : 0 = gauche, 1 = droite. */
+    readonly index = 0,
+    playerModel?: THREE.Group,
   ) {
-    const spawn = new THREE.Vector3(0, 0, side * 7.5);
+    const spawn = spawnPosition(side, index);
     this.ragdoll = new Ragdoll(
       world,
       scene,
       spawn,
       side > 0 ? Math.PI : 0,
       color,
-      side === PLAYER_SIDE ? GROUPS.player : GROUPS.ai,
+      collisionGroup(side, index),
+      playerModel,
     );
     this.racket = buildRacket();
     scene.add(this.racket);
@@ -237,8 +241,9 @@ export class Character {
     this.ragdoll.sync();
   }
 
-  respawn() {
-    this.ragdoll.respawn(new THREE.Vector3(0, 0, this.side * 7.5), this.side > 0 ? Math.PI : 0);
+  respawn(at?: THREE.Vector3) {
+    const spawn = at ?? spawnPosition(this.side, this.index);
+    this.ragdoll.respawn(spawn, this.side > 0 ? Math.PI : 0);
     this.swingT = -1;
     this.cooldown = 0;
     // L'horloge repart de zero a chaque point : sans cela, la pose d'attente
@@ -268,4 +273,10 @@ function buildRacket(): THREE.Group {
   handle.position.y = -0.05;
   group.add(face, handle);
   return group;
+}
+
+/** Position de depart en double : chaque joueur reste sur son cote du camp. */
+function spawnPosition(side: number, index: number): THREE.Vector3 {
+  const [x, y, z] = doublesHomePosition(side, index);
+  return new THREE.Vector3(x, y, z);
 }

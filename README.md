@@ -1,7 +1,8 @@
 # Padel Ragdoll 🎾
 
-MVP d'un jeu de **padel 3D** jouable dans le navigateur, où les deux joueurs sont
-des personnages **entièrement ragdoll** : aucune animation n'est jouée, chaque
+MVP d'un jeu de **padel 3D** jouable dans le navigateur, en **double (2v2)** :
+toi + un partenaire IA contre deux adversaires IA. Les joueurs sont des
+personnages **entièrement ragdoll** — aucune animation n'est jouée, chaque
 membre est ramené vers une pose cible par un asservissement physique. Il suffit
 de couper cet asservissement pour que le bonhomme s'écroule — ce qui arrive à
 chaque point perdu.
@@ -185,8 +186,7 @@ Issus d'une session de jeu réelle :
 
 ## Limites du MVP
 
-Match en 1v1 uniquement, pas de mode 2v2 ni de coéquipier. Le service part
-automatiquement dans le bon carré : on choisit le moment, pas le placement.
-Un service qui touche le filet est compté faute alors que la règle en fait un
-« let » à rejouer. Enfin, l'anticipation de l'IA s'arrête à trois secondes :
-au-delà de deux rebonds de vitre enchaînés, elle se replace au jugé.
+Le service part automatiquement dans le bon carré : on choisit le moment, pas le
+placement. Un service qui touche le filet est compté faute alors que la règle en
+fait un « let » à rejouer. Enfin, l'anticipation de l'IA s'arrête à trois
+secondes : au-delà de deux rebonds de vitre enchaînés, elle se replace au jugé.

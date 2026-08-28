@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host --port 4173",
     "smoke": "node scripts/smoke.mjs",
+    "verify:skin": "node --experimental-strip-types scripts/verify-skin.mjs",
     "sim": "node scripts/sim.mjs"
   },
   "repository": {

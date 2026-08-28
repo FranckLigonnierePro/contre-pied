@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { initPhysics, FIXED_DT, type World } from '../core/physics';
-import { createStage, buildCourt } from '../core/scene';
+import { createStage, buildCourt, buildStadium } from '../core/scene';
+import { CameraOccluders } from '../core/cameraOccluders';
 import { Input } from '../core/input';
 import { Sfx } from '../core/audio';
 import { Hud } from '../ui/hud';
-import { AI_SIDE, PALETTE, PLAYER_SIDE } from '../core/constants';
+import { AI_SIDE, PALETTE, PLAYER_SIDE, doublesHomePosition } from '../core/constants';
 import { Ball } from './ball';
 import { Character } from './character';
 import { ballisticVelocity } from './trajectory';
@@ -13,6 +14,7 @@ import { Ai } from './ai';
 import { aimPoint } from './aim';
 import { randSpread, seedRandom } from '../core/random';
 import { ImpactFlash, LandingMarker } from './effects';
+import { loadPlayerModel } from './playerModel';
 
 const _v = new THREE.Vector3();
 const _camTarget = new THREE.Vector3();
@@ -22,15 +24,23 @@ export class Game {
   private world!: World;
   stage!: ReturnType<typeof createStage>;
   ball!: Ball;
-  player!: Character;
-  opponent!: Character;
+  /** Equipe du joueur humain (index 0 = humain, 1 = partenaire IA). */
+  teamPlayer: Character[] = [];
+  /** Equipe adverse (deux IA). */
+  teamAi: Character[] = [];
+  /** Raccourci vers le joueur humain (compat simulateur). */
+  get player() { return this.teamPlayer[0]; }
+  /** Raccourci vers le premier adversaire (compat simulateur). */
+  get opponent() { return this.teamAi[0]; }
   rules = new Rules();
-  private ai: Ai = new Ai();
+  private aiOpponents: Ai[] = [new Ai(0.5, 0, 0), new Ai(0.5, 1, 2.1)];
+  private aiPartner: Ai = new Ai(0.45, 1, 1.3);
   private marker!: LandingMarker;
   private flash!: ImpactFlash;
   private input: Input;
   private hud: Hud;
   private sfx = new Sfx();
+  private occluders = new CameraOccluders();
 
   /**
    * Pilote automatique du joueur. Renseigne, le camp du joueur est joue par
@@ -50,19 +60,33 @@ export class Game {
 
   constructor(private container: HTMLElement) {
     this.input = new Input(container);
-    this.hud = new Hud(container, { player: PALETTE.joueur, ai: PALETTE.ia });
+    this.hud = new Hud(container, {
+      player: PALETTE.joueur,
+      partner: PALETTE.partenaire,
+      ai: PALETTE.ia,
+    });
   }
 
   async start() {
     this.world = await initPhysics();
     this.stage = createStage(this.container);
-    buildCourt(this.stage.scene, this.world);
+    const courtOccluders = buildCourt(this.stage.scene, this.world);
+    const stadiumOccluders = buildStadium(this.stage.scene);
+    this.occluders.register(courtOccluders, stadiumOccluders);
 
     this.ball = new Ball(this.world, this.stage.scene);
     this.marker = new LandingMarker(this.stage.scene);
     this.flash = new ImpactFlash(this.stage.scene);
-    this.player = new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.joueur);
-    this.opponent = new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia);
+
+    const playerModel = await loadPlayerModel();
+    this.teamPlayer = [
+      new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.joueur, 0, playerModel),
+      new Character(this.world, this.stage.scene, PLAYER_SIDE, PALETTE.partenaire, 1, playerModel),
+    ];
+    this.teamAi = [
+      new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia, 0, playerModel),
+      new Character(this.world, this.stage.scene, AI_SIDE, PALETTE.ia2, 1, playerModel),
+    ];
 
     // Poignee de debogage, utilisee par le test de fumee (scripts/smoke.mjs).
     (window as unknown as Record<string, unknown>).__padel = this;
@@ -80,16 +104,29 @@ export class Game {
     if (new URLSearchParams(location.search).has('sim')) this.stop();
   }
 
+  private allCharacters(): Character[] {
+    return [...this.teamPlayer, ...this.teamAi];
+  }
+
+  private teamOf(side: number): Character[] {
+    return side === PLAYER_SIDE ? this.teamPlayer : this.teamAi;
+  }
+
+  /** Joueur qui sert dans l'equipe en cours. */
+  private serverChar(): Character {
+    const team = this.teamOf(this.rules.server);
+    return team[this.rules.servePlayerIndex];
+  }
+
   private newPoint() {
     this.rules.startPoint();
-    this.player.respawn();
-    this.opponent.respawn();
+    for (const c of this.allCharacters()) c.respawn();
+    this.positionForServe();
     this.rallyTimer = 0;
     this.slowmo = 1;
     const s = this.rules.server;
-    // La balle attend le serveur dans le carre d'ou il va engager, qui est
-    // l'oppose de celui qu'il vise.
-    this.ball.reset(new THREE.Vector3(-this.rules.serveBox * 1.4, 1.4, s * 7.2));
+    const serveX = -this.rules.serveBox * 1.4;
+    this.ball.reset(new THREE.Vector3(serveX, 1.4, s * 7.2));
     this.hud.showBanner(
       s === PLAYER_SIDE ? 'A TOI DE SERVIR' : 'SERVICE ADVERSE',
       s === PLAYER_SIDE ? 'Espace pour engager' : '',
@@ -98,13 +135,31 @@ export class Game {
     if (s === AI_SIDE) this.pointTimer = 1.1;
   }
 
+  /** Place chaque joueur sur son poste au debut du point. */
+  private positionForServe() {
+    const box = this.rules.serveBox;
+    const serverSide = this.rules.server;
+    for (const c of this.allCharacters()) {
+      if (c.side === serverSide && c.index === this.rules.servePlayerIndex) {
+        const x = c.index === 0 ? -box * 1.4 : box * 1.4;
+        c.respawn(new THREE.Vector3(x, 0, c.side * 7.0));
+      } else if (c.side === serverSide) {
+        const [x, y, z] = doublesHomePosition(c.side, 1);
+        c.respawn(new THREE.Vector3(x, y, z));
+      } else if (c.index === 0) {
+        c.respawn(new THREE.Vector3(box * 1.4, 0, c.side * 8.2));
+      } else {
+        const [x, y, z] = doublesHomePosition(c.side, 1);
+        c.respawn(new THREE.Vector3(x, y, z));
+      }
+    }
+  }
+
   private serve(side: number) {
     const box = this.rules.serveBox;
-    // Le serveur engage depuis le carre oppose a celui qu'il vise.
-    const from = new THREE.Vector3(-box * 1.4, 1.2, side * 7.0);
-    // Premiere balle : on attaque le fond du carre, quitte a faire faute.
-    // Deuxieme : on assure le centre. C'est ce qui rend la double faute rare
-    // sans la rendre impossible.
+    const srv = this.serverChar();
+    const serveX = srv.index === 0 ? -box * 1.4 : box * 1.4;
+    const from = new THREE.Vector3(serveX, 1.2, side * 7.0);
     const attaque = this.rules.serveAttempt === 1;
     const erreur = attaque ? 1.4 : 0.6;
     const target = new THREE.Vector3(
@@ -123,7 +178,8 @@ export class Game {
   /** Premiere faute de service : on remet la balle au serveur pour sa deuxieme. */
   private onServeFault() {
     const s = this.rules.server;
-    this.ball.reset(new THREE.Vector3(-this.rules.serveBox * 1.4, 1.4, s * 7.2));
+    const serveX = -this.rules.serveBox * 1.4;
+    this.ball.reset(new THREE.Vector3(serveX, 1.4, s * 7.2));
     this.sfx.wall();
     this.hud.showBanner('FAUTE', `${this.rules.faultReason} — deuxieme balle`);
     this.rallyTimer = 0;
@@ -150,8 +206,9 @@ export class Game {
    */
   simulate(seed: number, difficulty = 0.5, difficultyIA = 0.5) {
     seedRandom(seed);
-    this.autoPlayer = new Ai(difficulty);
-    this.ai = new Ai(difficultyIA);
+    this.autoPlayer = new Ai(difficulty, 0, 0);
+    this.aiOpponents = [new Ai(difficultyIA, 0, 0), new Ai(difficultyIA, 1, 2.1)];
+    this.aiPartner = new Ai(difficulty * 0.9, 1, 1.3);
     this.stop();
     this.rules.reset();
     this.newPoint();
@@ -178,9 +235,9 @@ export class Game {
     } else {
       this.marker.hide();
     }
-    this.player.sync();
-    this.opponent.sync();
+    for (const c of this.allCharacters()) c.sync();
     this.updateCamera(raw);
+    this.occluders.update(raw, this.ball.position());
     this.stage.renderer.render(this.stage.scene, this.stage.camera);
   };
 
@@ -213,7 +270,7 @@ export class Game {
     this.serveTimer = 1.1;
 
     this.player.speed = this.autoPlayer!.moveSpeed;
-    const d = this.autoPlayer!.decide(this.player, this.opponent, this.ball, FIXED_DT);
+    const d = this.autoPlayer!.decide(this.player, this.teamAi, this.ball, FIXED_DT, [this.teamPlayer[1]]);
     s.move.copy(d.move);
     if (d.swing) {
       s.swing = true;
@@ -265,7 +322,14 @@ export class Game {
     }
 
     this.updatePlayer(dt, input);
-    this.updateOpponent(dt);
+    if (this.rules.phase === 'rally') {
+      this.updatePartner(dt);
+      this.updateOpponents(dt);
+    } else {
+      // Pendant le service ou la celebration, les IA restent sur leur poste.
+      this.holdAi(this.teamPlayer[1], dt);
+      for (const opp of this.teamAi) this.holdAi(opp, dt);
+    }
 
     this.world.step();
 
@@ -276,6 +340,7 @@ export class Game {
     for (const ev of this.ball.step(dt)) {
       if (ev.kind === 'floor') this.sfx.bounce();
       if (ev.kind === 'net' || ev.kind === 'wall') this.sfx.wall();
+      if (ev.kind === 'wall') this.occluders.onWallBounce(ev.side);
       const outcome = this.rules.onBallEvent(ev);
       if (outcome) this.concludePoint(outcome.winner, outcome.reason);
       else if (this.rules.serveAttempt !== tentative) {
@@ -301,40 +366,68 @@ export class Game {
     );
   }
 
-  private updatePlayer(dt: number, input: ReturnType<Input['poll']>) {
-    const pos = this.player.position();
+  private holdAi(char: Character, dt: number) {
+    const pos = char.position();
     const ballPos = this.ball.position();
-    // L'avant du personnage est son -z local : d'ou les signes inverses.
     const facing = Math.atan2(pos.x - ballPos.x, pos.z - ballPos.z);
+    char.update(dt, _v.set(0, 0, 0), facing, this.ball, false);
+  }
 
-    if (input.swing && this.rules.phase === 'rally') {
-      this.input.consumeSwing();
-      const kind = input.smash && ballPos.y > 1.9 ? 'smash' : input.lob ? 'lob' : 'plat';
-      // La direction tenue au moment de frapper decide ou part la balle.
-      const target = aimPoint(kind, input.move, PLAYER_SIDE, _v);
-      this.player.swing(kind, target, input.charge);
+  private updatePlayer(dt: number, input: ReturnType<Input['poll']>) {
+    this.updateCharacter(this.player, dt, input.move, input, true);
+  }
+
+  private updatePartner(dt: number) {
+    const partner = this.teamPlayer[1];
+    partner.speed = this.aiPartner.moveSpeed;
+    const decision = this.aiPartner.decide(partner, this.teamAi, this.ball, dt, [this.teamPlayer[0]]);
+    if (decision.swing && this.rules.canHit(PLAYER_SIDE)) {
+      partner.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
     }
-
-    // L'arbitre tranche avant le contact : une frappe interdite (deux fois de
-    // suite, ou hors echange) ne doit pas deplacer la balle.
-    const hit = this.player.update(
-      dt, input.move, facing, this.ball, this.rules.canHit(PLAYER_SIDE),
+    const hit = partner.update(
+      dt, decision.move, decision.facing, this.ball, this.rules.canHit(PLAYER_SIDE),
     );
     if (hit) this.registerHit(PLAYER_SIDE, hit.power, hit.position);
   }
 
-  private updateOpponent(dt: number) {
-    this.opponent.speed = this.ai.moveSpeed;
-    const decision = this.ai.decide(this.opponent, this.player, this.ball, dt);
-    // On interroge l'arbitre avant de declencher : inutile de gaspiller un
-    // swing sur une balle que l'IA n'a pas le droit de toucher.
-    if (decision.swing && this.rules.canHit(AI_SIDE)) {
-      this.opponent.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
+  private updateOpponents(dt: number) {
+    for (let i = 0; i < this.teamAi.length; i++) {
+      const opp = this.teamAi[i];
+      opp.speed = this.aiOpponents[i].moveSpeed;
+      const mates = this.teamAi.filter((_, j) => j !== i);
+      const decision = this.aiOpponents[i].decide(opp, this.teamPlayer, this.ball, dt, mates);
+      if (decision.swing && this.rules.canHit(AI_SIDE)) {
+        opp.swing(decision.swing.kind, decision.swing.aim, decision.swing.charge);
+      }
+      const hit = opp.update(
+        dt, decision.move, decision.facing, this.ball, this.rules.canHit(AI_SIDE),
+      );
+      if (hit) this.registerHit(AI_SIDE, hit.power, hit.position);
     }
-    const hit = this.opponent.update(
-      dt, decision.move, decision.facing, this.ball, this.rules.canHit(AI_SIDE),
+  }
+
+  private updateCharacter(
+    char: Character,
+    dt: number,
+    move: THREE.Vector3,
+    input: ReturnType<Input['poll']>,
+    isHuman: boolean,
+  ) {
+    const pos = char.position();
+    const ballPos = this.ball.position();
+    const facing = Math.atan2(pos.x - ballPos.x, pos.z - ballPos.z);
+
+    if (isHuman && input.swing && this.rules.phase === 'rally') {
+      this.input.consumeSwing();
+      const kind = input.smash && ballPos.y > 1.9 ? 'smash' : input.lob ? 'lob' : 'plat';
+      const target = aimPoint(kind, input.move, PLAYER_SIDE, _v);
+      char.swing(kind, target, input.charge);
+    }
+
+    const hit = char.update(
+      dt, move, facing, this.ball, this.rules.canHit(char.side),
     );
-    if (hit) this.registerHit(AI_SIDE, hit.power, hit.position);
+    if (hit) this.registerHit(char.side, hit.power, hit.position);
   }
 
   private registerHit(side: number, power: number, at: THREE.Vector3) {
@@ -348,9 +441,9 @@ export class Game {
     this.sfx.point();
     this.pointTimer = 2.2;
     this.slowmo = 0.35;
-    // Le perdant du point s'ecroule : la sanction est visuelle.
-    const loser = winner === PLAYER_SIDE ? this.opponent : this.player;
-    loser.ragdoll.collapse(1.6);
+    // L'equipe perdante s'ecroule : la sanction est visuelle.
+    const losers = this.teamOf(-winner);
+    for (const c of losers) c.ragdoll.collapse(1.6);
     this.sfx.fall();
     this.hud.showBanner(winner === PLAYER_SIDE ? 'POINT POUR TOI' : 'POINT ADVERSE', reason);
   }

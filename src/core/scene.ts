@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import { RAPIER, type World } from './physics';
 import { COURT, GROUPS, PALETTE } from './constants';
+import { BASE_DECOR, BASE_STAND, BASE_WALL, markPlayerOccluder } from './cameraOccluders';
 
 export interface Stage {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
 }
+
+/** Groupe de meshes occultants cote joueur (mur + gradins derriere la camera). */
+export type PlayerOccluders = THREE.Group;
 
 export function createStage(container: HTMLElement): Stage {
   const scene = new THREE.Scene();
@@ -45,7 +49,8 @@ export function createStage(container: HTMLElement): Stage {
 }
 
 /** Construit le court : sol, lignes, filet, parois vitrees + les colliders correspondants. */
-export function buildCourt(scene: THREE.Scene, world: World) {
+export function buildCourt(scene: THREE.Scene, world: World): PlayerOccluders {
+  const playerOccluders = new THREE.Group();
   const { halfWidth: hw, halfLength: hl } = COURT;
 
   const floor = new THREE.Mesh(
@@ -82,10 +87,22 @@ export function buildCourt(scene: THREE.Scene, world: World) {
     side: THREE.DoubleSide,
   });
 
-  const wall = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), glassMat);
+  const playerGlassMat = glassMat.clone();
+  playerGlassMat.opacity = BASE_WALL;
+  playerGlassMat.depthWrite = false;
+
+  const wall = (
+    w: number, h: number, d: number, x: number, y: number, z: number,
+    mat: THREE.Material,
+    occluder = false,
+  ) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x, y, z);
     scene.add(mesh);
+    if (occluder) {
+      markPlayerOccluder(mesh, BASE_WALL);
+      playerOccluders.add(mesh);
+    }
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z));
     world.createCollider(
       RAPIER.ColliderDesc.cuboid(w / 2, h / 2, d / 2).setRestitution(0.7).setFriction(0.3).setCollisionGroups(GROUPS.env),
@@ -95,21 +112,145 @@ export function buildCourt(scene: THREE.Scene, world: World) {
 
   const bh = COURT.backWallHeight;
   const sh = COURT.sideWallHeight;
-  wall(hw * 2, bh, 0.1, 0, bh / 2, -hl); // fond IA
-  wall(hw * 2, bh, 0.1, 0, bh / 2, hl); // fond joueur
-  wall(0.1, sh, hl * 2, -hw, sh / 2, 0); // lateral gauche
-  wall(0.1, sh, hl * 2, hw, sh / 2, 0); // lateral droit
+  wall(hw * 2, bh, 0.1, 0, bh / 2, -hl, glassMat); // fond IA
+  wall(hw * 2, bh, 0.1, 0, bh / 2, hl, playerGlassMat, true); // fond joueur (cote camera)
+  wall(0.1, sh, hl * 2, -hw, sh / 2, 0, glassMat); // lateral gauche
+  wall(0.1, sh, hl * 2, hw, sh / 2, 0, glassMat); // lateral droit
 
   // Montants d'angle, purement decoratifs.
   const postMat = new THREE.MeshStandardMaterial({ color: PALETTE.grillage, roughness: 0.6 });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, bh, 0.12), postMat);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, bh, 0.12), postMat.clone());
     post.position.set(sx * hw, bh / 2, sz * hl);
     post.castShadow = true;
+    if (sz > 0) {
+      markPlayerOccluder(post, BASE_DECOR, 0.38);
+      playerOccluders.add(post);
+    }
     scene.add(post);
   }
 
   buildNet(scene, world);
+  return playerOccluders;
+}
+
+/** Decor du stade : tribunes, eclairage, cloture et bannieres. */
+export function buildStadium(scene: THREE.Scene): PlayerOccluders {
+  const playerOccluders = new THREE.Group();
+  const { halfWidth: hw, halfLength: hl } = COURT;
+
+  // Tribunes en gradins autour du court.
+  const standMat = new THREE.MeshStandardMaterial({ color: PALETTE.tribune, roughness: 0.9 });
+  const seatMat = new THREE.MeshStandardMaterial({ color: PALETTE.siege, roughness: 0.85 });
+  const tiers = 5;
+  const tierH = 0.55;
+  const tierD = 1.1;
+
+  const buildStandRow = (w: number, d: number, x: number, z: number, rotY: number, occluder = false) => {
+    const group = new THREE.Group();
+    for (let i = 0; i < tiers; i++) {
+      const step = new THREE.Mesh(new THREE.BoxGeometry(w, tierH, tierD), standMat.clone());
+      step.position.set(0, tierH * (i + 0.5), -tierD * i);
+      step.receiveShadow = true;
+      group.add(step);
+      const seats = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, tierH * 0.35, tierD * 0.7), seatMat.clone());
+      seats.position.set(0, tierH * (i + 1) - tierH * 0.15, -tierD * i);
+      group.add(seats);
+      const crowd = new THREE.Mesh(
+        new THREE.BoxGeometry(w * 0.88, tierH * 0.25, tierD * 0.5),
+        new THREE.MeshStandardMaterial({
+          color: i % 2 === 0 ? 0x4a6a8a : 0x6a4a5a,
+          roughness: 1,
+        }),
+      );
+      crowd.position.set(0, tierH * (i + 1) + tierH * 0.05, -tierD * i);
+      group.add(crowd);
+      if (occluder) {
+        for (const m of [step, seats, crowd]) markPlayerOccluder(m, BASE_STAND);
+      }
+    }
+    group.position.set(x, 0, z);
+    group.rotation.y = rotY;
+    scene.add(group);
+    if (occluder) playerOccluders.add(group);
+  };
+
+  const margin = 3.5;
+  buildStandRow(hw * 2 + 8, tierD, 0, hl + margin, 0, true); // gradins cote camera
+  buildStandRow(hw * 2 + 8, tierD, 0, -hl - margin, Math.PI);
+  buildStandRow(hl * 2 + 8, tierD, -hw - margin, 0, Math.PI / 2);
+  buildStandRow(hl * 2 + 8, tierD, hw + margin, 0, -Math.PI / 2);
+
+  // Dalle beton autour du court.
+  const apron = new THREE.Mesh(
+    new THREE.BoxGeometry(hw * 2 + 14, 0.08, hl * 2 + 20),
+    new THREE.MeshStandardMaterial({ color: PALETTE.beton, roughness: 0.95 }),
+  );
+  apron.position.y = -0.12;
+  apron.receiveShadow = true;
+  scene.add(apron);
+
+  // Cloture grillagee au-dessus des vitres laterales.
+  const fenceMat = new THREE.MeshStandardMaterial({
+    color: PALETTE.grillage,
+    transparent: true,
+    opacity: 0.35,
+    roughness: 0.7,
+    side: THREE.DoubleSide,
+  });
+  for (const sx of [-1, 1]) {
+    const fence = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.2, hl * 2 + 2), fenceMat);
+    fence.position.set(sx * (hw + 0.3), 3.8, 0);
+    scene.add(fence);
+  }
+
+  // Poteaux d'eclairage aux quatre coins exterieurs.
+  const poleMat = new THREE.MeshStandardMaterial({ color: PALETTE.grillage, roughness: 0.5, metalness: 0.3 });
+  const lightMat = new THREE.MeshStandardMaterial({
+    color: PALETTE.luminaire,
+    emissive: PALETTE.luminaire,
+    emissiveIntensity: 0.6,
+    roughness: 0.3,
+  });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 12), poleMat);
+    pole.position.set(sx * (hw + 5), 6, sz * (hl + 4));
+    pole.castShadow = true;
+    scene.add(pole);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 0.6), lightMat);
+    lamp.position.set(sx * (hw + 5), 12.2, sz * (hl + 4));
+    scene.add(lamp);
+    const spot = new THREE.PointLight(0xfff0d0, 0.4, 30);
+    spot.position.copy(lamp.position);
+    scene.add(spot);
+  }
+
+  // Bannieres publicitaires sur les cotes.
+  const bannerMat = new THREE.MeshStandardMaterial({ color: PALETTE.banniere, roughness: 0.6 });
+  const bannerColors = [0xff3a6a, 0x3a8aff, 0xffc93a, 0x3aff8a];
+  for (let i = 0; i < 4; i++) {
+    const banner = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.8, 0.06), bannerMat.clone());
+    (banner.material as THREE.MeshStandardMaterial).color.setHex(bannerColors[i]);
+    banner.position.set(-hw - 2.5 + i * 2.5, 2.5, hl + 2.8);
+    markPlayerOccluder(banner, BASE_DECOR, 0.42);
+    playerOccluders.add(banner);
+    scene.add(banner);
+  }
+
+  // Panneau de score decoratif au fond.
+  const scoreboard = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 1.2, 0.15),
+    new THREE.MeshStandardMaterial({ color: 0x111820, roughness: 0.4, metalness: 0.2 }),
+  );
+  scoreboard.position.set(0, 3.2, -hl - 2.5);
+  scene.add(scoreboard);
+  const scoreGlow = new THREE.Mesh(
+    new THREE.BoxGeometry(3.6, 0.7, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.3 }),
+  );
+  scoreGlow.position.set(0, 3.2, -hl - 2.42);
+  scene.add(scoreGlow);
+  return playerOccluders;
 }
 
 function addLines(scene: THREE.Scene) {

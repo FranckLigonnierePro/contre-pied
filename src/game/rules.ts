@@ -29,6 +29,8 @@ export class Rules {
   private bounces = 0;
   /** Points deja joues dans le jeu en cours : decide le carre de service. */
   private pointsInGame = 0;
+  /** Index du joueur qui sert dans l'equipe (0 ou 1), alterne a chaque jeu. */
+  servePlayerIndex = 0;
   /** Vrai tant que le premier rebond du service n'a pas ete juge. */
   private judgingServe = false;
 
@@ -201,6 +203,8 @@ export class Rules {
     this.points.set(AI_SIDE, 0);
     this.advantage = 0;
     this.server = -this.server;
+    // En double, le partenaire prend le service au jeu suivant.
+    this.servePlayerIndex = 1 - this.servePlayerIndex;
     // On ne bascule pas en phase 'match' ici : le point qui vient d'etre gagne
     // doit d'abord se jouer jusqu'au bout (ralenti, chute, banniere). C'est
     // l'appelant qui passe en 'match' une fois la celebration finie, en lisant

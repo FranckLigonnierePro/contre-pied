@@ -40,6 +40,12 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 }
 .charge.show { opacity: 1; }
 .charge i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,#dcff4f,#ff8a3a); }
+.mode {
+  position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right));
+  font-size: 12px; font-weight: 700; letter-spacing: .08em;
+  background: rgba(10,24,18,.55); border: 1px solid rgba(255,255,255,.15);
+  border-radius: 6px; padding: 4px 10px; opacity: .8;
+}
 @media (pointer: coarse) { .hint { display: none; } }
 `;
 
@@ -53,7 +59,7 @@ export class Hud {
   private chargeBar!: HTMLElement;
   private chargeFill!: HTMLElement;
 
-  constructor(root: HTMLElement, colors: { player: number; ai: number }) {
+  constructor(root: HTMLElement, colors: { player: number; partner: number; ai: number }) {
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.appendChild(style);
@@ -63,11 +69,18 @@ export class Hud {
     layer.className = 'hud';
     layer.innerHTML = `
       <div class="score">
-        <span class="side"><i class="dot" style="background:${hex(colors.player)}"></i>TOI</span>
+        <span class="side">
+          <i class="dot" style="background:${hex(colors.player)}"></i>
+          <i class="dot" style="background:${hex(colors.partner)}"></i>NOUS
+        </span>
         <span class="pts" data-p>0</span><span class="sep">-</span><span class="pts" data-a>0</span>
-        <span class="side">IA<i class="dot" style="background:${hex(colors.ai)}"></i></span>
+        <span class="side">EUX
+          <i class="dot" style="background:${hex(colors.ai)}"></i>
+          <i class="dot" style="background:${hex(colors.ai)}"></i>
+        </span>
         <span class="games" data-g>Jeux 0-0</span>
       </div>
+      <div class="mode">2v2</div>
       <div class="banner"><h1></h1><p></p></div>
       <div class="charge"><i></i></div>
       <div class="hint">ZQSD / WASD deplacer et viser &nbsp;·&nbsp; ESPACE frapper (maintenir = puissance) &nbsp;·&nbsp; MAJ lob &nbsp;·&nbsp; E smash</div>

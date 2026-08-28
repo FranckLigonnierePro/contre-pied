@@ -112,6 +112,119 @@ export function buildCourt(scene: THREE.Scene, world: World) {
   buildNet(scene, world);
 }
 
+/** Decor du stade : tribunes, eclairage, cloture et bannieres. */
+export function buildStadium(scene: THREE.Scene) {
+  const { halfWidth: hw, halfLength: hl } = COURT;
+
+  // Tribunes en gradins autour du court.
+  const standMat = new THREE.MeshStandardMaterial({ color: PALETTE.tribune, roughness: 0.9 });
+  const seatMat = new THREE.MeshStandardMaterial({ color: PALETTE.siege, roughness: 0.85 });
+  const tiers = 5;
+  const tierH = 0.55;
+  const tierD = 1.1;
+
+  const buildStandRow = (w: number, d: number, x: number, z: number, rotY: number) => {
+    const group = new THREE.Group();
+    for (let i = 0; i < tiers; i++) {
+      const step = new THREE.Mesh(new THREE.BoxGeometry(w, tierH, tierD), standMat);
+      step.position.set(0, tierH * (i + 0.5), -tierD * i);
+      step.receiveShadow = true;
+      group.add(step);
+      // Rangee de sieges coloree.
+      const seats = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, tierH * 0.35, tierD * 0.7), seatMat);
+      seats.position.set(0, tierH * (i + 1) - tierH * 0.15, -tierD * i);
+      group.add(seats);
+      // Touches de couleur pour simuler la foule.
+      const crowd = new THREE.Mesh(
+        new THREE.BoxGeometry(w * 0.88, tierH * 0.25, tierD * 0.5),
+        new THREE.MeshStandardMaterial({
+          color: i % 2 === 0 ? 0x4a6a8a : 0x6a4a5a,
+          roughness: 1,
+        }),
+      );
+      crowd.position.set(0, tierH * (i + 1) + tierH * 0.05, -tierD * i);
+      group.add(crowd);
+    }
+    group.position.set(x, 0, z);
+    group.rotation.y = rotY;
+    scene.add(group);
+  };
+
+  const margin = 3.5;
+  buildStandRow(hw * 2 + 8, tierD, 0, hl + margin, 0);
+  buildStandRow(hw * 2 + 8, tierD, 0, -hl - margin, Math.PI);
+  buildStandRow(hl * 2 + 8, tierD, -hw - margin, 0, Math.PI / 2);
+  buildStandRow(hl * 2 + 8, tierD, hw + margin, 0, -Math.PI / 2);
+
+  // Dalle beton autour du court.
+  const apron = new THREE.Mesh(
+    new THREE.BoxGeometry(hw * 2 + 14, 0.08, hl * 2 + 20),
+    new THREE.MeshStandardMaterial({ color: PALETTE.beton, roughness: 0.95 }),
+  );
+  apron.position.y = -0.12;
+  apron.receiveShadow = true;
+  scene.add(apron);
+
+  // Cloture grillagee au-dessus des vitres laterales.
+  const fenceMat = new THREE.MeshStandardMaterial({
+    color: PALETTE.grillage,
+    transparent: true,
+    opacity: 0.35,
+    roughness: 0.7,
+    side: THREE.DoubleSide,
+  });
+  for (const sx of [-1, 1]) {
+    const fence = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.2, hl * 2 + 2), fenceMat);
+    fence.position.set(sx * (hw + 0.3), 3.8, 0);
+    scene.add(fence);
+  }
+
+  // Poteaux d'eclairage aux quatre coins exterieurs.
+  const poleMat = new THREE.MeshStandardMaterial({ color: PALETTE.grillage, roughness: 0.5, metalness: 0.3 });
+  const lightMat = new THREE.MeshStandardMaterial({
+    color: PALETTE.luminaire,
+    emissive: PALETTE.luminaire,
+    emissiveIntensity: 0.6,
+    roughness: 0.3,
+  });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 12), poleMat);
+    pole.position.set(sx * (hw + 5), 6, sz * (hl + 4));
+    pole.castShadow = true;
+    scene.add(pole);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 0.6), lightMat);
+    lamp.position.set(sx * (hw + 5), 12.2, sz * (hl + 4));
+    scene.add(lamp);
+    const spot = new THREE.PointLight(0xfff0d0, 0.4, 30);
+    spot.position.copy(lamp.position);
+    scene.add(spot);
+  }
+
+  // Bannieres publicitaires sur les cotes.
+  const bannerMat = new THREE.MeshStandardMaterial({ color: PALETTE.banniere, roughness: 0.6 });
+  const bannerColors = [0xff3a6a, 0x3a8aff, 0xffc93a, 0x3aff8a];
+  for (let i = 0; i < 4; i++) {
+    const banner = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.8, 0.06), bannerMat.clone());
+    (banner.material as THREE.MeshStandardMaterial).color.setHex(bannerColors[i]);
+    banner.position.set(-hw - 2.5 + i * 2.5, 2.5, hl + 2.8);
+    scene.add(banner);
+  }
+
+  // Panneau de score decoratif au fond.
+  const scoreboard = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 1.2, 0.15),
+    new THREE.MeshStandardMaterial({ color: 0x111820, roughness: 0.4, metalness: 0.2 }),
+  );
+  scoreboard.position.set(0, 3.2, -hl - 2.5);
+  scene.add(scoreboard);
+  const scoreGlow = new THREE.Mesh(
+    new THREE.BoxGeometry(3.6, 0.7, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.3 }),
+  );
+  scoreGlow.position.set(0, 3.2, -hl - 2.42);
+  scene.add(scoreGlow);
+}
+
 function addLines(scene: THREE.Scene) {
   const { halfWidth: hw, serviceLine } = COURT;
   const mat = new THREE.MeshBasicMaterial({ color: PALETTE.ligne });

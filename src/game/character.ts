@@ -4,7 +4,7 @@ import { Ball } from './ball';
 import type { World } from '../core/physics';
 import { ballisticVelocity } from './trajectory';
 import { randSpread } from '../core/random';
-import { BALL_RADIUS, COURT, GROUPS, PALETTE, PLAYER_SIDE, SPRINT_SPEED } from '../core/constants';
+import { BALL_RADIUS, COURT, DOUBLES_OFFSET, PALETTE, SPRINT_SPEED, collisionGroup } from '../core/constants';
 
 export type ShotKind = 'plat' | 'lob' | 'smash';
 
@@ -55,15 +55,17 @@ export class Character {
     private scene: THREE.Scene,
     readonly side: number,
     color: number,
+    /** Index dans l'equipe : 0 = gauche, 1 = droite. */
+    readonly index = 0,
   ) {
-    const spawn = new THREE.Vector3(0, 0, side * 7.5);
+    const spawn = spawnPosition(side, index);
     this.ragdoll = new Ragdoll(
       world,
       scene,
       spawn,
       side > 0 ? Math.PI : 0,
       color,
-      side === PLAYER_SIDE ? GROUPS.player : GROUPS.ai,
+      collisionGroup(side, index),
     );
     this.racket = buildRacket();
     scene.add(this.racket);
@@ -238,7 +240,8 @@ export class Character {
   }
 
   respawn() {
-    this.ragdoll.respawn(new THREE.Vector3(0, 0, this.side * 7.5), this.side > 0 ? Math.PI : 0);
+    const spawn = spawnPosition(this.side, this.index);
+    this.ragdoll.respawn(spawn, this.side > 0 ? Math.PI : 0);
     this.swingT = -1;
     this.cooldown = 0;
     // L'horloge repart de zero a chaque point : sans cela, la pose d'attente
@@ -268,4 +271,10 @@ function buildRacket(): THREE.Group {
   handle.position.y = -0.05;
   group.add(face, handle);
   return group;
+}
+
+/** Position de depart en double : partenaires decales lateralement. */
+function spawnPosition(side: number, index: number): THREE.Vector3 {
+  const x = index === 0 ? -DOUBLES_OFFSET : DOUBLES_OFFSET;
+  return new THREE.Vector3(x, 0, side * 7.5);
 }

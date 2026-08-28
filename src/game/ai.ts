@@ -119,9 +119,11 @@ export class Ai {
   }
 
   /**
-   * @param opponent adversaire, dont la position decide ou l'on place la balle.
+   * @param opponents adversaires, dont la position decide ou l'on place la balle.
    */
-  decide(self: Character, opponent: Character, ball: Ball, dt: number): AiDecision {
+  decide(self: Character, opponents: Character | Character[], ball: Ball, dt: number): AiDecision {
+    const foes = Array.isArray(opponents) ? opponents : [opponents];
+    const nearest = nearestOpponent(self, foes, ball);
     this.time += dt;
     const pos = self.position();
     ball.position(_ballPos);
@@ -153,7 +155,7 @@ export class Ai {
     const hand = self.ragdoll.handPosition();
     if (incoming && self.canSwing && this.declenche(hand.distanceTo(_ballPos))) {
       const kind: ShotKind = _ballPos.y > 2.2 ? 'smash' : random() < 0.2 ? 'lob' : 'plat';
-      const aim = aimAgainst(kind, opponent.position(_adverse), self.side, this.difficulty);
+      const aim = aimAgainst(kind, nearest.position(_adverse), self.side, this.difficulty);
       swing = { kind, aim, charge: randRange(0.8, 1.2) };
     }
 
@@ -172,4 +174,16 @@ export function predictLanding(
   // On garde l'IA de son cote du filet.
   if (out.z * side < 0.5) out.z = side * 1.5;
   return out;
+}
+
+/** Adversaire le plus proche de la balle, pour viser l'espace libre en double. */
+function nearestOpponent(self: Character, foes: Character[], ball: Ball): Character {
+  const bp = ball.position(_ballPos);
+  let best = foes[0];
+  let dist = Infinity;
+  for (const f of foes) {
+    const d = f.position(_adverse).distanceTo(bp);
+    if (d < dist) { dist = d; best = f; }
+  }
+  return best;
 }
